@@ -2,154 +2,16 @@
 <html lang="zh-CN">
 
 <head>
-  <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
-  <title>AI伴游 · 西湖</title>
-  <meta name="description" content="AI智能导游，带你游遍西湖十景" />
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@300;400;500;600;700;900&display=swap"
-    rel="stylesheet">
-  <link rel="stylesheet" href="/src/style.css" />
+  <meta charset="UTF-8">
+  <meta name="viewport"
+    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+  <title>AI伴游</title>
 </head>
 
-<body>
-  <div id="app">
-    <!-- ===== 启动页 ===== -->
-    <div class="splash" id="splash">
-      <div class="splash-content">
-        <div class="splash-icon">🏞️</div>
-        <h1>AI伴游</h1>
-        <p>西湖十景 · 智能导览</p>
-        <div class="splash-bar">
-          <div class="splash-fill" id="splashFill"></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== 状态栏 ===== -->
-    <header class="status-bar" id="statusBar">
-      <span class="sb-time" id="sbTime">20:41</span>
-      <div class="sb-sys" id="locationSwitcher">
-        <i class="sys-dot"></i>
-        <select id="locSelect" class="loc-select">
-          <option value="antspace">当前位置</option>
-          <option value="westlake" selected>西湖</option>
-          <option value="gugong">故宫</option>
-        </select>
-      </div><span class="sb-right">☀️ 22° <span class="sb-battery">🔋</span></span>
-    </header>
-
-    <!-- ===== 围栏信息条 ===== -->
-    <div class="geofence-bar" id="geofenceBar">
-      <div class="gf-left">
-        <span class="gf-visitors"><i class="gf-user-icon">👥</i><span id="gfVisitors">3,280</span>人</span>
-        <span class="gf-heat" id="gfHeat">🔥🔥🔥🔥</span>
-      </div>
-      <div class="gf-marquee" id="gfMarquee">
-        <!-- 滚动消息 -->
-      </div>
-    </div>
-
-    <!-- ===== 上半区：地图 + 摄像头浮窗 ===== -->
-    <section class="map-area" id="mapArea">
-      <canvas id="mapCanvas"></canvas>
-      <div class="poi-layer" id="poiLayer"></div>
-
-      <!-- 摄像头画中画 -->
-      <div class="camera-pip" id="cameraPip">
-        <video id="cameraVideo" autoplay playsinline muted></video>
-        <div class="pip-overlay" id="pipOverlay">
-          <span class="pip-label">📷 取景</span>
-        </div>
-        <button class="pip-flip" id="pipFlip" title="切换镜头">🔄</button>
-        <button class="pip-shutter" id="pipShutter" title="拍照">📸</button>
-        <canvas id="photoCanvas" style="display:none"></canvas>
-      </div>
-
-      <!-- 地图控件 -->
-      <div class="map-ctrls">
-        <button class="map-ctrl-btn" id="btnLocate">📍</button>
-      </div>
-
-      <!-- 到达Toast -->
-      <div class="arrival-toast hidden" id="arrivalToast">
-        <span class="at-icon">📍</span>
-        <div class="at-info"><small>已到达</small><strong id="atName">断桥残雪</strong></div>
-      </div>
-    </section>
-
-    <!-- ===== 数字人浮窗 ===== -->
-    <div class="avatar-float guiding" id="avatarFloat">
-      <div class="av-ring" id="avRing">
-        <div class="av-ring-text">数字人导览中</div>
-        <div class="avatar-char" id="avatarChar">
-          <div class="av-glow"></div>
-          <div class="av-body">
-            <div class="av-head">
-              <div class="av-hair-bun l"></div>
-              <div class="av-hair-bun r"></div>
-              <div class="av-hair"></div>
-              <div class="av-face">
-                <div class="av-eyes">
-                  <div class="av-eye l">
-                    <div class="av-pupil"></div>
-                  </div>
-                  <div class="av-eye r">
-                    <div class="av-pupil"></div>
-                  </div>
-                </div>
-                <div class="av-blush l"></div>
-                <div class="av-blush r"></div>
-                <div class="av-mouth" id="avMouth"></div>
-              </div>
-              <div class="av-hairpin">🪷</div>
-            </div>
-            <div class="av-neck">
-              <div class="av-collar"></div>
-            </div>
-            <div class="av-torso">
-              <div class="av-fan">🪭</div>
-            </div>
-          </div>
-          <div class="av-nametag" id="avNameTag">小溪</div>
-          <div class="av-status" id="avStatus"><i class="status-dot on"></i>在线</div>
-        </div>
-      </div>
-      <button class="av-toggle" id="avToggle" title="切换模式">🔄</button>
-    </div>
-
-    <!-- ===== 下半区：对话区 ===== -->
-    <section class="chat-area" id="chatArea">
-      <div class="chat-drag" id="chatDrag">
-        <div class="drag-bar"></div>
-      </div>
-      <div class="chat-messages" id="chatMessages">
-        <div class="chat-welcome" id="welcomeBox">
-          <div class="cw-icon">🏞️</div>
-          <h3>你好，我是<strong id="welcomeName">小溪</strong></h3>
-          <p id="welcomeDesc">你的西湖AI导游～ 有什么想了解的尽管问我！</p>
-        </div>
-      </div>
-      <!-- 底部常驻快捷键 -->
-      <div class="quick-btns-bar" id="quickBtnsBar">
-        <button class="qb" data-msg="推荐一条游览路线">🗺️ 推荐路线</button>
-        <button class="qb" data-msg="西湖有什么历史故事">📜 历史故事</button>
-        <button class="qb" data-msg="附近有什么好吃的">🍜 美食推荐</button>
-        <button class="qb" data-msg="哪里拍照最好看">📸 拍照攻略</button>
-      </div>
-      <div class="chat-input-bar disabled" id="chatInputBar">
-        <div class="ci-mask" id="ciMask">小溪导览中，已锁定输入...</div>
-        <button class="ci-btn" id="btnCameraToggle" title="开关摄像头">📷</button>
-        <button class="ci-btn" id="btnVoice" title="语音">🎤</button>
-        <input type="text" id="chatInput" placeholder="问我关于西湖的一切..." />
-        <button class="ci-send" id="btnSend">➤</button>
-      </div>
-    </section>
-
-    <!-- 背景粒子 -->
-    <canvas class="bg-fx" id="bgFx"></canvas>
-  </div>
-  <script type="module" src="/src/main.js"></script>
+<body
+  class="bg-[#C7D2FE] flex justify-center items-center overflow-hidden text-gray-800 antialiased h-[100dvh] w-screen m-0 select-none overscroll-none touch-none font-sans">
+  <div id="root" class="h-full w-full max-w-[430px] relative shadow-2xl overflow-hidden bg-white"></div>
+  <script type="module" src="/src/main.tsx"></script>
 </body>
 
 </html>
