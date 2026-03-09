@@ -179,9 +179,9 @@ export default function ChatBox() {
     };
 
     return (
-        <>
-            {/* 消息区域 - 使用截图里非常浅色的灰色背景，通过 gap-y 保证间距生效并且不会被 css 覆盖 */}
-            <div ref={msgsRef} className="flex-1 min-h-0 scroll-smooth overflow-y-auto px-5 py-6 pb-12 w-full max-w-full mx-auto relative flex flex-col gap-y-4 bg-[#fefefe]">
+        <div className="flex-1 flex flex-col h-full w-full bg-transparent relative">
+            {/* 消息区域 */}
+            <div ref={msgsRef} className="flex-1 min-h-0 scroll-smooth overflow-y-auto px-5 pt-2 pb-12 w-full max-w-full mx-auto relative flex flex-col gap-y-4">
 
                 {messages.map(m => (
                     <div key={m.id} className={`flex ${m.sender === 'user' ? 'justify-end' : 'justify-start'} items-start space-x-2.5`}>
@@ -261,7 +261,7 @@ export default function ChatBox() {
             </div>
 
             {/* 快捷推荐 */}
-            <div className="px-6 py-3.5 flex justify-between items-center w-full gap-2.5 bg-white shrink-0 shadow-[0_-2px_10px_rgba(0,0,0,0.02)] border-t border-gray-100">
+            <div className="px-6 py-3.5 flex justify-between items-center w-full gap-2.5 bg-transparent shrink-0">
                 <button onClick={() => triggerQuickWord('route')} className="flex-1 flex justify-center py-2 px-1 rounded-full bg-white border border-[#e5e5e5] hover:bg-gray-50 text-[13px] text-[#333333] transition-colors items-center space-x-1 shadow-sm active:scale-95">
                     <span className="text-gray-500 text-[14px]">🗺️</span>
                     <span className="whitespace-nowrap">推荐路线</span>
@@ -281,7 +281,7 @@ export default function ChatBox() {
             </div>
 
             {/* 底部输入区 */}
-            <div className="bg-white p-3 pt-1 border-t border-gray-100 shrink-0 shadow-[0_-2px_10px_rgba(0,0,0,0.02)]">
+            <div className="bg-transparent px-4 pb-4 pt-2 shrink-0">
                 <div className="flex items-center space-x-2">
                     {/* Voice Button */}
                     <button type="button" className="w-10 h-10 flex items-center justify-center shrink-0 bg-gray-100 text-gray-700 rounded-full active:bg-gray-200 transition-colors disabled:opacity-40" disabled={!avatarPaused}>
@@ -390,6 +390,6 @@ export default function ChatBox() {
                     </svg>
                 </button>
             )}
-        </>
+        </div>
     );
 }

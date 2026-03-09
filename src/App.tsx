@@ -44,17 +44,23 @@ export default function App() {
             <TopBar />
 
             {/* 地图交互区 (上半部) */}
-            <div className="relative h-[50%] bg-blue-50 overflow-hidden shrink-0">
+            <div className="relative h-[35%] bg-blue-50 overflow-hidden shrink-0">
                 <MapLayer />
                 <CameraWidget />
             </div>
 
             {/* 聊天会话区 (下半部) */}
-            <div className="flex-1 min-h-0 flex flex-col bg-white relative z-10">
-                {/* 方案二：无界渐变融合风 (Seamless Gradient Blend) */}
-                <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-transparent to-white pointer-events-none -mt-16"></div>
+            <div className="flex-1 min-h-0 flex flex-col bg-transparent relative z-10 -mt-10 px-8 pb-12">
+                <div className="flex-1 flex flex-col bg-white rounded-t-[32px] rounded-b-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] overflow-hidden">
+                    {/* 顶部中央的小横条 (Drag Handle) */}
+                    <div className="w-full h-8 shrink-0 flex items-center justify-center relative bg-white z-20">
+                        <div className="w-10 h-1.5 bg-gray-300/60 rounded-full"></div>
+                    </div>
 
-                <ChatBox />
+                    <div className="flex-1 min-h-0 relative z-10 bg-[#f4f6f9]">
+                        <ChatBox />
+                    </div>
+                </div>
             </div>
 
             {/* 侧边数字人挂件 */}
