@@ -90,7 +90,13 @@ export default function AvatarWidget() {
             {/* 头像本体区域 */}
             <div className="w-[82px] h-[82px] rounded-full overflow-hidden bg-gradient-to-b from-blue-50 to-blue-200 relative flex items-center justify-center shadow-inner">
                 {/* 根据不同 guide id 渲染不同风格。V3 中是纯 CSS 绘制 */}
-                {guide.id === 'xiaoxi' && (
+                {guide.id === 'xiaohuang' ? (
+                    <img
+                        src="/xiaohuang_avatar.png"
+                        alt="小黄"
+                        className={`w-full h-full object-cover ${avatarTalking ? 'scale-110' : 'scale-100'} transition-transform duration-500`}
+                    />
+                ) : guide.id === 'xiaoxi' ? (
                     <div className="relative w-full h-full flex items-center justify-center">
                         <div className="w-[38px] h-[34px] bg-[#ffe0cd] rounded-b-[20px] rounded-t-[16px] z-10 relative">
                             <div className="absolute top-[14px] left-[6px] w-[5px] h-[5px] bg-[#4a3b32] rounded-full"></div>
@@ -100,17 +106,15 @@ export default function AvatarWidget() {
                         {/* 简单发型占位 */}
                         <div className="absolute top-[12px] w-[46px] h-[20px] bg-[#2c221e] rounded-t-[20px] z-20"></div>
                     </div>
-                )}
-
-                {guide.id === 'xiaogu' && (
+                ) : guide.id === 'xiaogu' ? (
                     <div className="relative w-full h-full flex items-center justify-center">
                         <div className="w-[38px] h-[34px] bg-[#ffe0cd] rounded-b-[20px] rounded-t-[16px] z-10 relative"></div>
                         <div className="absolute top-[8px] w-[50px] h-[22px] bg-[#2c221e] rounded-t-[25px] z-20"></div>
                     </div>
-                )}
-
-                {guide.id === 'xiaoyou' && (
+                ) : guide.id === 'xiaoyou' ? (
                     <div className="text-4xl">🧑‍🚀</div>
+                ) : (
+                    <div className="text-4xl">👤</div>
                 )}
             </div>
 

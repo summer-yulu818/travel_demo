@@ -101,7 +101,12 @@ export default function ChatBox() {
         setIsTypingObj(id);
         isTypingObjRef.current = id;
 
-        const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
+        const activePois = currentLoc.poiData?.map((p: any) => p.name).join('、') || '暂无';
+        const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。
+你的名字叫小溪（如果是故宫叫小故，黄山叫小黄，蚂蚁空间叫小游）。
+当前景区内有效的景点列表为：【${activePois}】。
+请仅针对上述有效景点进行介绍和回答。如果用户问及不在列表中的景点，请礼貌地告知该景点当前不可见或不属于本次导览范围。
+请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
 
         const history: ChatMessage[] = messages.slice(-4).map(m => ({
             role: m.sender === 'user' ? 'user' : 'assistant',

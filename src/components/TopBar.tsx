@@ -24,11 +24,15 @@ export default function TopBar() {
                 <div className="absolute left-1/2 -translate-x-1/2 flex items-center">
                     <select
                         value={currentLocId}
-                        onChange={(e) => setLocId(e.target.value)}
+                        onChange={async (e) => {
+                            const newId = e.target.value;
+                            await setLocId(newId);
+                        }}
                         className="bg-transparent border-none outline-none text-blue-800 font-bold text-[13px] text-center"
                     >
                         <option value="westlake">西湖</option>
                         <option value="gugong">故宫</option>
+                        <option value="huangshan">黄山</option>
                         <option value="antspace">蚂蚁空间</option>
                     </select>
                 </div>

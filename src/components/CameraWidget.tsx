@@ -113,7 +113,16 @@ export default function CameraWidget() {
                         // 4. 调用视觉大模型
                         import('../services/llm').then(async ({ analyzeImage }) => {
                             try {
-                                const prompt = `你现在是智能伴游导游小溪，游客处于景点【${currentLoc.scenicArea.name}】。游客刚拍了一张照片给你看。请你用自然活泼、亲密导游的口语识别照片里的关键物体或风景，并给出简短评价（1-2句即可，如果发现照片里明显不是风景而是人或室内物品，也可以幽默地调侃一下）。`;
+                                const activePois = currentLoc.poiData?.map((p: any) => p.name).join('、') || '暂无';
+                                const currentLocId = currentLoc.scenicArea.id; // Assuming currentLocId is available or can be derived
+                                const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。
+你的名字叫小溪（如果是故宫叫小故，黄山叫小黄，蚂蚁空间叫小游）。
+当前景区内有效的景点列表为：【${activePois}】。
+请仅针对上述有效景点进行介绍和回答。如果用户问及不在列表中的景点，请礼貌地告知该景点当前不可见或不属于本次导览范围。
+请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
+                                const prompt = `${systemPrompt}
+游客刚拍了一张照片给你看。请你用自然活泼、亲密导游的口语识别照片里的物体或风景。
+注意：如果识别结果属于上述有效景点列表，请详细介绍；如果不属于该列表（可能是已下架景点或无关物体），请不要将其识别为列表中的景点，而是如实描述并在必要时幽默调侃。评价简短（1-2句即可）。`;
                                 const reply = await analyzeImage(base64Img, prompt);
                                 updateMessage(botMsgId, { text: reply, isTyping: false });
                             } catch (e) {

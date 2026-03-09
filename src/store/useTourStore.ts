@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 // @ts-ignore
-import { locations } from '../data/scenic-data';
+import { locations as staticLocations } from '../data/scenic-data';
+import { fetchScenicData, ScenicLocation } from '../services/scenicService';
 
 type Point = { x: number; y: number };
 
@@ -15,6 +16,7 @@ export type Message = {
 interface TourState {
     currentLocId: string;
     currentLoc: any;
+    dynamicLocations: Record<string, ScenicLocation>;
     userPos: Point;
     avatarPaused: boolean;
     avatarTalking: boolean;
@@ -26,7 +28,7 @@ interface TourState {
     currentTTS: { id: string; text: string; imageUrl?: string } | null;
 
     // Actions
-    setLocId: (id: string) => void;
+    setLocId: (id: string) => Promise<void>;
     setUserPos: (pos: Point) => void;
     setAvatarPaused: (paused: boolean) => void;
     setAvatarTalking: (talking: boolean) => void;
@@ -59,14 +61,15 @@ const buildPath = (points: any[]) => {
     return path;
 };
 
-// attach walkPath to init
-Object.values(locations).forEach((loc: any) => {
+// attach walkPath to static init
+Object.values(staticLocations).forEach((loc: any) => {
     loc.walkPath = buildPath(loc.poiData);
 });
 
-export const useTourStore = create<TourState>((set) => ({
+export const useTourStore = create<TourState>((set, get) => ({
     currentLocId: 'westlake',
-    currentLoc: locations['westlake'],
+    currentLoc: staticLocations['westlake'],
+    dynamicLocations: {},
     userPos: { x: 0.58, y: 0.18 }, // snap to first poi
     avatarPaused: true,
     avatarTalking: false,
@@ -77,7 +80,44 @@ export const useTourStore = create<TourState>((set) => ({
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
     currentTTS: null,
 
-    setLocId: (id) => set({ currentLocId: id, currentLoc: locations[id as keyof typeof locations] }),
+    setLocId: async (id) => {
+        // 1. Check static
+        if (staticLocations[id]) {
+            const loc = staticLocations[id];
+            set({
+                currentLocId: id,
+                currentLoc: loc,
+                userPos: loc.poiData[0]?.position || { x: 0.5, y: 0.5 }
+            });
+            return;
+        }
+
+        // 2. Check dynamic cache
+        const { dynamicLocations } = get();
+        if (dynamicLocations[id]) {
+            const loc = dynamicLocations[id];
+            set({
+                currentLocId: id,
+                currentLoc: loc,
+                userPos: loc.poiData[0]?.position || { x: 0.5, y: 0.5 }
+            });
+            return;
+        }
+
+        // 3. Fetch from DB
+        const locData = await fetchScenicData(id);
+        if (locData) {
+            (locData as any).walkPath = buildPath(locData.poiData);
+            set((state) => ({
+                currentLocId: id,
+                currentLoc: locData,
+                dynamicLocations: { ...state.dynamicLocations, [id]: locData },
+                userPos: locData.poiData[0]?.position || { x: 0.5, y: 0.5 }
+            }));
+        } else {
+            console.error(`Failed to load location: ${id}`);
+        }
+    },
     setUserPos: (pos) => set({ userPos: pos }),
     setAvatarPaused: (paused) => set({ avatarPaused: paused }),
     setAvatarTalking: (talking) => set({ avatarTalking: talking }),
