@@ -21,20 +21,20 @@ export interface VisionMatchResponse {
 interface UseVisionMatchOptions {
     matchThreshold?: number;
     matchCount?: number;
-    engine?: 'mediapipe' | 'clip' | 'huggingface' | 'dashscope';
+    engine?: 'mediapipe' | 'dashscope';
 }
 
 /**
  * Hook that orchestrates the full vision matching pipeline:
  * 1. Capture a frame from a video element
- * 2. Extract embedding (Local MediaPipe/CLIP or Online DashScope/HF)
+ * 2. Extract embedding (Local MediaPipe or Online DashScope)
  * 3. Query Supabase pgvector for the closest matching attraction
  */
 export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
     const { matchThreshold = 0.3, matchCount = 1, engine: preferredEngine } = options;
     const { ready: modelReady, loading: modelLoading, extractEmbedding, engineName: localEngine } = useEmbedding();
 
-    const activeEngine = preferredEngine || localEngine;
+    const activeEngine = (preferredEngine as any) === 'clip' ? 'mediapipe' : (preferredEngine || localEngine);
     const [isMatching, setIsMatching] = useState(false);
     const [lastMatch, setLastMatch] = useState<MatchResult | null>(null);
 
@@ -63,33 +63,13 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
         }
     }, []);
 
-    const extractHFEmbedding = useCallback(async (imageDataUrl: string): Promise<number[] | null> => {
-        const hfToken = import.meta.env.VITE_HF_TOKEN;
-        if (!hfToken) return null;
-        try {
-            const res = await fetch(imageDataUrl);
-            const blob = await res.blob();
-            const response = await fetch(
-                "https://api-inference.huggingface.co/models/openai/clip-vit-large-patch14",
-                {
-                    headers: { Authorization: `Bearer ${hfToken}` },
-                    method: "POST",
-                    body: blob,
-                }
-            );
-            if (!response.ok) return null;
-            const result = await response.json();
-            return Array.isArray(result) ? (Array.isArray(result[0]) ? result[0] : result) : null;
-        } catch (err) { return null; }
-    }, []);
-
     const matchFromVideo = useCallback(
         async (
             videoElement: HTMLVideoElement,
             scenicId: string,
             attractionIds?: string[]
         ): Promise<VisionMatchResponse | null> => {
-            if (!modelReady && activeEngine !== 'dashscope' && activeEngine !== 'huggingface') {
+            if (!modelReady && activeEngine !== 'dashscope') {
                 console.warn(`[VisionMatch] ${activeEngine} model not ready (local)`);
                 return { match: null };
             }
@@ -136,8 +116,6 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
                 let embedding: number[] | null = null;
                 if (activeEngine === 'dashscope') {
                     embedding = await extractDashScopeEmbedding(imageDataUrl);
-                } else if (activeEngine === 'huggingface') {
-                    embedding = await extractHFEmbedding(imageDataUrl);
                 } else {
                     embedding = await extractEmbedding(imageDataUrl);
                 }
@@ -151,9 +129,7 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
                     ? 'match_attraction_images_mp'
                     : activeEngine === 'dashscope'
                         ? 'match_attraction_images_dashscope'
-                        : activeEngine === 'huggingface'
-                            ? 'match_attraction_images_hf'
-                            : 'match_attraction_images';
+                        : 'match_attraction_images';
 
                 const rpcParams: any = {
                     query_embedding: embedding,
@@ -195,7 +171,7 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
                 setIsMatching(false);
             }
         },
-        [modelReady, extractEmbedding, extractDashScopeEmbedding, extractHFEmbedding, activeEngine, matchThreshold]
+        [modelReady, extractEmbedding, extractDashScopeEmbedding, activeEngine, matchThreshold, matchCount]
     );
 
     const matchFromImage = useCallback(
@@ -204,7 +180,7 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
             scenicId: string,
             attractionIds?: string[]
         ): Promise<VisionMatchResponse | null> => {
-            if (!modelReady && activeEngine !== 'dashscope' && activeEngine !== 'huggingface') {
+            if (!modelReady && activeEngine !== 'dashscope') {
                 return { match: null };
             }
 
@@ -216,8 +192,6 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
                 let embedding: number[] | null = null;
                 if (activeEngine === 'dashscope') {
                     embedding = await extractDashScopeEmbedding(imageSource);
-                } else if (activeEngine === 'huggingface') {
-                    embedding = await extractHFEmbedding(imageSource);
                 } else {
                     embedding = await extractEmbedding(imageSource);
                 }
@@ -228,9 +202,7 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
                     ? 'match_attraction_images_mp'
                     : activeEngine === 'dashscope'
                         ? 'match_attraction_images_dashscope'
-                        : activeEngine === 'huggingface'
-                            ? 'match_attraction_images_hf'
-                            : 'match_attraction_images';
+                        : 'match_attraction_images';
 
                 const { data, error } = await supabase.rpc(rpcName, {
                     query_embedding: embedding,
@@ -270,14 +242,14 @@ export const useVisionMatch = (options: UseVisionMatchOptions = {}) => {
                 setIsMatching(false);
             }
         },
-        [modelReady, extractEmbedding, extractDashScopeEmbedding, extractHFEmbedding, activeEngine, matchThreshold]
+        [modelReady, extractEmbedding, extractDashScopeEmbedding, activeEngine, matchThreshold, matchCount]
     );
 
     return {
         modelReady,
         modelLoading,
         engineName: activeEngine,
-        embeddingDim: activeEngine === 'dashscope' ? 1024 : activeEngine === 'mediapipe' ? 1024 : activeEngine === 'huggingface' ? 768 : 512,
+        embeddingDim: activeEngine === 'dashscope' ? 1024 : 1024,
         isMatching,
         lastMatch,
         matchFromVideo,

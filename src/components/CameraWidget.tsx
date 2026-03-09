@@ -8,7 +8,7 @@ export default function CameraWidget() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
     const { cameraActive, setCameraActive, isVisionActive, setVisionActive, currentLocId, currentLoc, setUserPos, triggerTTS, addMessage, enableCloudVision, avatarPaused, avatarTalking, addDebugLog } = useTourStore();
-    const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+    const [facingMode, setFacingMode] = useState<'user' | 'environment'>('environment');
     const floatRef = useRef<HTMLDivElement>(null);
     const [pos, setPos] = useState({ x: 16, y: 16 }); // Initial top-4 left-4 position
 
@@ -23,6 +23,7 @@ export default function CameraWidget() {
 
         const onPointerDown = (e: PointerEvent) => {
             if ((e.target as HTMLElement).tagName === 'BUTTON') return;
+            e.stopPropagation(); // Prevent map from capturing the drag
             isDragging = true;
             offsetX = e.clientX - pos.x;
             offsetY = e.clientY - pos.y;
@@ -124,7 +125,7 @@ export default function CameraWidget() {
     return (
         <div
             ref={floatRef}
-            className="fixed w-28 h-36 bg-black rounded-lg overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-600 z-50 transition-shadow cursor-grab active:cursor-grabbing touch-none"
+            className="absolute w-28 h-36 bg-black rounded-lg overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-600 z-50 transition-shadow cursor-grab active:cursor-grabbing touch-none"
             style={{ left: pos.x, top: pos.y }}
         >
             <video

@@ -8,7 +8,7 @@ export const locations = {
       id: 'westlake', name: '西湖景区', city: '杭州', visitors: 3280, heatLevel: 4,
       geofence: { lat: 30.2590, lng: 120.1300, radius: 3000 }
     },
-    guide: { id: 'xiaoxi', name: '小溪', title: '西湖AI导游' },
+    guide: { id: 'xiaoxi', name: '小溪', title: '西湖AI导游', avatarUrl: '/avatars/westlake_avatar.png', botIcon: '🐍' },
     poiData: [
       { id: 'broken-bridge', name: '断桥残雪', icon: '🌉', position: { x: 0.58, y: 0.18 }, distance: '200m', narration: '这里便是断桥残雪。相传白娘子与许仙正是于此桥相遇，结下千古奇缘。冬雪初霁时，桥面半白半青，宛如长桥从中折断，极富诗意。', image: 'https://picsum.photos/id/28/400/240' },
       { id: 'su-causeway', name: '苏堤春晓', icon: '🌸', position: { x: 0.28, y: 0.45 }, distance: '500m', narration: '此去便是苏堤春晓，位列西湖十景之首。北宋文豪苏东坡任杭州知州时修筑此堤，全长近六里。早春时节，漫步于此，一株杨柳一株桃，春风拂面，宛在画中游。', image: 'https://picsum.photos/id/29/400/240' },
@@ -39,7 +39,7 @@ export const locations = {
       id: 'gugong', name: '故宫博物院', city: '北京', visitors: 18450, heatLevel: 5,
       geofence: { lat: 39.9163, lng: 116.3971, radius: 1500 }
     },
-    guide: { id: 'xiaogu', name: '小故', title: '故宫AI文化使者' },
+    guide: { id: 'xiaogu', name: '小故', title: '故宫AI文化使者', avatarUrl: '/avatars/gugong_avatar.png', botIcon: '👸' },
     poiData: [
       { id: 'taihotien', name: '太和殿', icon: '🏯', position: { x: 0.5, y: 0.65 }, distance: '100m', narration: '眼前这座宏伟的殿宇便是太和殿，俗称金銮殿。作为紫禁城内等级最高的建筑，明清两代的重大典礼皆在此举行，尽显皇家威仪与浩荡气象。', image: 'https://picsum.photos/id/65/400/240' },
       { id: 'qianqing', name: '乾清宫', icon: '👑', position: { x: 0.5, y: 0.45 }, distance: '300m', narration: '现在看到的乾清宫，曾是明代及清初帝王理政与安寝的核心之所。殿内高悬的“正大光明”匾额，见证了无数历史转折与风云际会。', image: 'https://picsum.photos/id/66/400/240' },
@@ -63,7 +63,7 @@ export const locations = {
       id: 'antspace', name: '当前位置 (蚂蚁空间)', city: '杭州', visitors: 120, heatLevel: 1,
       geofence: null // 无围栏触发
     },
-    guide: { id: 'xiaoyou', name: '小游', title: '全能AI小助手' },
+    guide: { id: 'xiaoyou', name: '小游', title: '全能AI小助手', avatarUrl: '/avatars/antspace_avatar.png', botIcon: '🧑‍🚀' },
     poiData: [
       { id: 'ant-coffee', name: '前台咖啡', icon: '☕', position: { x: 0.3, y: 0.4 }, distance: '10m', narration: '您现在所在的位置是蚂蚁空间。前台的现磨咖啡醇香四溢，不仅是工作间隙的放松，更蕴含着开放迎客的现代待客之道。', image: 'https://picsum.photos/id/42/400/240' },
       { id: 'ant-garden', name: '露台花园', icon: '🪴', position: { x: 0.7, y: 0.6 }, distance: '50m', narration: '移步露台花园，这里绿植葱茏，错落有致。这片都市里的自然绿洲，为理性的科技空间平添了一抹生机的诗意。', image: 'https://picsum.photos/id/114/400/240' }

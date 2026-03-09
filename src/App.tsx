@@ -50,7 +50,10 @@ export default function App() {
             </div>
 
             {/* 聊天会话区 (下半部) */}
-            <div className="flex-1 min-h-0 flex flex-col bg-white rounded-t-3xl shadow-[0_-4px_20px_rgba(0,0,0,0.05)] relative z-10 -mt-4">
+            <div className="flex-1 min-h-0 flex flex-col bg-white relative z-10">
+                {/* 方案二：无界渐变融合风 (Seamless Gradient Blend) */}
+                <div className="absolute top-0 left-0 right-0 h-16 bg-gradient-to-b from-transparent to-white pointer-events-none -mt-16"></div>
+
                 <ChatBox />
             </div>
 

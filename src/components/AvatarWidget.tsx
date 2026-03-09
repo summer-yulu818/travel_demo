@@ -89,8 +89,13 @@ export default function AvatarWidget() {
 
             {/* 头像本体区域 */}
             <div className="w-[82px] h-[82px] rounded-full overflow-hidden bg-gradient-to-b from-blue-50 to-blue-200 relative flex items-center justify-center shadow-inner">
-                {/* 根据不同 guide id 渲染不同风格。V3 中是纯 CSS 绘制 */}
-                {guide.id === 'xiaohuang' ? (
+                {guide.avatarUrl ? (
+                    <img
+                        src={guide.avatarUrl}
+                        alt={guide.name}
+                        className={`w-full h-full object-cover ${avatarTalking ? 'scale-110' : 'scale-100'} transition-transform duration-500`}
+                    />
+                ) : guide.id === 'xiaohuang' ? (
                     <img
                         src="/xiaohuang_avatar.png"
                         alt="小黄"

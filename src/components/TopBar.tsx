@@ -17,8 +17,8 @@ export default function TopBar() {
     }, []);
 
     return (
-        <div className="flex flex-col w-full relative z-20 bg-white/80 backdrop-blur-md pb-3 rounded-b-xl shadow-sm">
-            <div className="flex justify-between items-center px-4 pt-14 pb-3 h-20 text-[13px] font-semibold">
+        <div className="flex flex-col w-full relative z-20 bg-white/80 backdrop-blur-md pb-2 rounded-b-xl shadow-sm">
+            <div className="flex justify-between items-center px-4 pt-4 pb-1 text-[13px] font-semibold">
                 <div className="flex items-center space-x-2">
                     <span>{timeStr}</span>
                 </div>
@@ -59,7 +59,7 @@ export default function TopBar() {
 }
 
 function GeofenceBar() {
-    const { currentLoc, gfMsgIndex, setGfMsgIndex, triggerTTS } = useTourStore();
+    const { currentLoc, gfMsgIndex, setGfMsgIndex, triggerTTS, addMessage, avatarPaused } = useTourStore();
     const area = currentLoc.scenicArea;
     const messages = currentLoc.geofenceMessages || [];
 
@@ -91,11 +91,17 @@ function GeofenceBar() {
             <div
                 className="flex-1 overflow-hidden relative h-5 leading-5 pl-3 cursor-pointer text-blue-700 opacity-90 hover:text-blue-800 active:scale-95 transition-all group"
                 onClick={() => {
+                    if (avatarPaused) return;
                     const msg = messages[gfMsgIndex] || messages[0];
                     if (msg) {
-                        // Formal structured trigger
-                        const fullText = `【${msg.text}】\n\n为您找到以下优惠活动信息：${msg.detail}`;
-                        triggerTTS(`promo-${Date.now()}`, fullText);
+                        const userMsgId = `promo-usr-${Date.now()}`;
+                        addMessage({ id: userMsgId, sender: 'user', text: `请问【${area.name}】现在有什么优惠活动吗？` });
+
+                        const botMsgId = `promo-bot-${Date.now()}`;
+                        addMessage({ id: botMsgId, sender: 'bot', text: '' });
+
+                        const fullText = `为您找到以下优惠活动：\n\n【${msg.text}】\n${msg.detail}`;
+                        triggerTTS(botMsgId, fullText);
                     }
                 }}
             >

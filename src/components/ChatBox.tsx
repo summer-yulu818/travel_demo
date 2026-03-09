@@ -173,8 +173,9 @@ export default function ChatBox() {
             route: '推荐路线', history: '历史故事', food: '美食推荐', photo: '拍照攻略'
         };
         const txt = txtMap[key];
-        addMessage({ id: `msg-${Date.now()}`, sender: 'user', text: `请给我一些关于【${currentLoc.name}】的${txt}。` });
-        llmBotReply(`请给我一些关于【${currentLoc.name}】的${txt}。`);
+        const scenicName = currentLoc?.scenicArea?.name || '景区';
+        addMessage({ id: `msg-${Date.now()}`, sender: 'user', text: `请给我一些关于【${scenicName}】的${txt}。` });
+        llmBotReply(`请给我一些关于【${scenicName}】的${txt}。`);
     };
 
     return (
@@ -187,16 +188,14 @@ export default function ChatBox() {
                         {/* Bot Avatar */}
                         {m.sender === 'bot' && (
                             <div className="w-9 h-9 rounded-full bg-white flex-shrink-0 overflow-hidden mt-1 border border-gray-100 shadow-sm flex items-center justify-center">
-                                {currentLoc?.guide?.id === 'xiaohuang' ? (
+                                {currentLoc?.guide?.avatarUrl ? (
+                                    <img src={currentLoc.guide.avatarUrl} alt={currentLoc.guide.name} className="w-full h-full object-cover" />
+                                ) : currentLoc?.guide?.id === 'xiaohuang' ? (
                                     <img src="/xiaohuang_avatar.png" alt="小黄" className="w-full h-full object-cover" />
-                                ) : currentLoc?.guide?.id === 'xiaoxi' ? (
-                                    <div className="w-full h-full bg-[#ffe0cd] flex items-center justify-center text-lg">👩‍💼</div>
-                                ) : currentLoc?.guide?.id === 'xiaogu' ? (
-                                    <div className="w-full h-full bg-[#ffe0cd] flex items-center justify-center text-lg">🤵</div>
-                                ) : currentLoc?.guide?.id === 'xiaoyou' ? (
-                                    <div className="w-full h-full bg-blue-500 flex items-center justify-center text-lg">🧑‍🚀</div>
                                 ) : (
-                                    <img src={`https://api.dicebear.com/7.x/adventurer-neutral/svg?seed=${currentLoc?.guide?.id || 'bot'}&backgroundColor=d1d4f9`} alt="Bot" className="w-full h-full object-cover" />
+                                    <div className="w-full h-full bg-[#ffe0cd] flex items-center justify-center text-lg">
+                                        {currentLoc?.guide?.botIcon || '👩‍💼'}
+                                    </div>
                                 )}
                             </div>
                         )}
