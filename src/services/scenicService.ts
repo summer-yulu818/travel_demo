@@ -5,8 +5,6 @@ export interface POIData {
     name: string;
     icon: string;
     position: { x: number; y: number };
-    lng: number;
-    lat: number;
     distance: string;
     narration: string;
     image: string;
@@ -105,8 +103,6 @@ export const fetchScenicData = async (scenicId: string): Promise<ScenicLocation 
                 name: a.name,
                 icon: '📍',
                 position: { x, y },
-                lng: a.longitude,
-                lat: a.latitude,
                 distance: '100m',
                 narration: a.description || `这是${a.name}，一个非常值得一游的地方。`,
                 image: attractionImages[0] || '/xiaohuang_avatar.png',

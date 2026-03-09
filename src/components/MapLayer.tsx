@@ -1,170 +1,193 @@
 import { useEffect, useRef, useState } from 'react';
-import AMapLoader from '@amap/amap-jsapi-loader';
 import { useTourStore } from '../store/useTourStore';
 
 export default function MapLayer() {
-    const { currentLoc, setUserPos, avatarPaused, addMessage, triggerTTS, userPos } = useTourStore();
-    const mapContainerRef = useRef<HTMLDivElement>(null);
-    const mapInstanceRef = useRef<any>(null);
-    const AMapRef = useRef<any>(null);
-    const markersRef = useRef<any[]>([]);
-    const userMarkerRef = useRef<any>(null);
-    const [mapLoaded, setMapLoaded] = useState(false);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
+    const mapWrapperRef = useRef<HTMLDivElement>(null);
+    const { currentLocId, currentLoc, userPos, setUserPos, avatarPaused, addMessage, triggerTTS } = useTourStore();
 
-    const poiData = currentLoc?.poiData || [];
+    // Map Pan/Zoom state
+    const [mapTransform, setMapTransform] = useState({ scale: 1, x: 0, y: 0 });
+    const isDraggingMap = useRef(false);
+    const lastPos = useRef({ x: 0, y: 0 });
 
-    // Initialize AMap
+    const poiData = currentLoc.poiData || [];
+
+    // Map Interaction Handlers
+    const handleWheel = (e: React.WheelEvent) => {
+        e.preventDefault();
+        const zoomDelta = -e.deltaY * 0.001;
+        setMapTransform(prev => ({
+            ...prev,
+            scale: Math.min(Math.max(0.5, prev.scale + zoomDelta), 3)
+        }));
+    };
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        isDraggingMap.current = true;
+        lastPos.current = { x: e.clientX, y: e.clientY };
+        if (mapWrapperRef.current) {
+            mapWrapperRef.current.setPointerCapture(e.pointerId);
+        }
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!isDraggingMap.current) return;
+        const dx = e.clientX - lastPos.current.x;
+        const dy = e.clientY - lastPos.current.y;
+        lastPos.current = { x: e.clientX, y: e.clientY };
+        setMapTransform(prev => ({
+            ...prev,
+            x: prev.x + dx,
+            y: prev.y + dy
+        }));
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        isDraggingMap.current = false;
+        if (mapWrapperRef.current) {
+            mapWrapperRef.current.releasePointerCapture(e.pointerId);
+        }
+    };
+
     useEffect(() => {
-        let map: any = null;
+        const canvas = canvasRef.current;
+        const container = containerRef.current;
+        if (!canvas || !container) return;
 
-        AMapLoader.load({
-            key: import.meta.env.VITE_AMAP_KEY,
-            version: '2.0',
-        }).then((AMap: any) => {
-            if (!mapContainerRef.current) return;
+        const resize = () => {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        };
+        resize();
+        window.addEventListener('resize', resize);
 
-            AMapRef.current = AMap;
+        const ctx = canvas.getContext('2d')!;
+        const w = canvas.width;
+        const h = canvas.height;
 
-            map = new AMap.Map(mapContainerRef.current, {
-                zoom: 16,
-                center: poiData.length > 0 ? [poiData[0].lng, poiData[0].lat] : [116.397026, 39.917],
-                mapStyle: 'amap://styles/whitesmoke',
-                resizeEnable: true,
-                pitchEnable: false,
-                rotateEnable: false,
-                dragEnable: true,
-                zoomEnable: true,
-                showLabel: true,
-                features: ['bg', 'road', 'building', 'point'],
-            });
+        let animId: number;
 
-            mapInstanceRef.current = map;
-            setMapLoaded(true);
-        }).catch((e: any) => {
-            console.error('AMap load error:', e);
-        });
+        const render = () => {
+            // Base fill (AMap style light background)
+            ctx.fillStyle = '#f2efe9';
+            ctx.fillRect(0, 0, w, h);
+
+            // 1. Draw Park (Green Area)
+            ctx.fillStyle = '#dcecd6';
+            ctx.beginPath();
+            ctx.moveTo(w * 0.1, h * 0.2);
+            ctx.bezierCurveTo(w * 0.3, h * 0.1, w * 0.4, h * 0.4, w * 0.2, h * 0.6);
+            ctx.bezierCurveTo(w * 0.05, h * 0.5, w * 0.0, h * 0.3, w * 0.1, h * 0.2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(w * 0.7, h * 0.6);
+            ctx.bezierCurveTo(w * 0.9, h * 0.5, w + 50, h * 0.8, w * 0.8, h + 50);
+            ctx.bezierCurveTo(w * 0.6, h * 0.9, w * 0.5, h * 0.7, w * 0.7, h * 0.6);
+            ctx.fill();
+
+            // 2. Draw River
+            ctx.lineWidth = 30;
+            ctx.strokeStyle = '#b3d1ff';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-50, h * 0.7);
+            ctx.bezierCurveTo(w * 0.3, h * 0.8, w * 0.6, h * 0.4, w + 50, h * 0.3);
+            ctx.stroke();
+
+            // 3. Draw Main Roads (Arterial - Yellow/White)
+            const drawRoad = (x1: number, y1: number, x2: number, y2: number, cx: number, cy: number, width: number, color: string, outline: string) => {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.quadraticCurveTo(cx, cy, x2, y2);
+                ctx.lineWidth = width + 2;
+                ctx.strokeStyle = outline;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.quadraticCurveTo(cx, cy, x2, y2);
+                ctx.lineWidth = width;
+                ctx.strokeStyle = color;
+                ctx.stroke();
+            };
+
+            // Main Highway
+            drawRoad(-50, h * 0.2, w + 50, h * 0.9, w * 0.5, h * 0.4, 14, '#ffe292', '#e2c575');
+            // Secondary Road
+            drawRoad(w * 0.7, -50, w * 0.4, h + 50, w * 0.8, h * 0.5, 10, '#ffffff', '#e0e0e0');
+            // Tertiary Road
+            drawRoad(-50, h * 0.5, w * 0.8, -50, w * 0.2, h * 0.2, 8, '#ffffff', '#e0e0e0');
+            drawRoad(w * 0.2, h + 50, w + 50, h * 0.6, w * 0.6, h * 0.8, 8, '#ffffff', '#e0e0e0');
+
+            // Draw subtle POI tint based on currentLocId
+            if (currentLocId === 'gugong') {
+                ctx.fillStyle = 'rgba(217, 119, 119, 0.03)';
+                ctx.fillRect(0, 0, w, h);
+            }
+
+            animId = requestAnimationFrame(render);
+        };
+        render();
 
         return () => {
-            if (map) {
-                map.destroy();
-            }
+            cancelAnimationFrame(animId);
+            window.removeEventListener('resize', resize);
         };
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []);
-
-    // Render Markers after map load
-    useEffect(() => {
-        if (!mapInstanceRef.current || !mapLoaded || !AMapRef.current) return;
-        const AMap = AMapRef.current;
-
-        // Clear existing markers
-        markersRef.current.forEach(m => mapInstanceRef.current.remove(m));
-        markersRef.current = [];
-
-        if (poiData.length === 0) return;
-
-        // Add POI markers
-        poiData.forEach((poi: any) => {
-            const el = document.createElement('div');
-            el.className = 'amap-poi-marker';
-            el.innerHTML = `
-                <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translate(-50%, -100%); transition: transform 0.2s; pointer-events: auto;">
-                    <div style="width: 32px; height: 32px; border-radius: 50%; background: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 4px; z-index: 10;">
-                        ${poi.icon || '📍'}
-                    </div>
-                    <div style="font-size: 10px; color: #374151; font-weight: 500; background: rgba(255, 255, 255, 0.8); padding: 0 4px; border-radius: 4px; backdrop-filter: blur(4px); white-space: nowrap;">
-                        ${poi.name}
-                    </div>
-                </div>
-            `;
-
-            const marker = new AMap.Marker({
-                position: new AMap.LngLat(poi.lng, poi.lat),
-                content: el,
-                offset: new AMap.Pixel(0, 0),
-                anchor: 'bottom-center',
-                extData: poi
-            });
-
-            marker.on('click', () => {
-                setUserPos(poi.position);
-                if (!avatarPaused) {
-                    const msgId = `bot-poi-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-                    addMessage({ id: msgId, sender: 'bot', text: '' });
-                    triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image, poi.images);
-                }
-            });
-
-            mapInstanceRef.current.add(marker);
-            markersRef.current.push(marker);
-        });
-
-        // Fit map bounds
-        mapInstanceRef.current.setFitView(null, false, [40, 40, 40, 40]);
-
-    }, [poiData, mapLoaded, avatarPaused, addMessage, setUserPos, triggerTTS]);
-
-    // Handle user location marker
-    useEffect(() => {
-        if (!mapInstanceRef.current || !mapLoaded || !AMapRef.current) return;
-        const AMap = AMapRef.current;
-
-        let userLng = poiData[0]?.lng || 116.397026;
-        let userLat = poiData[0]?.lat || 39.917;
-
-        // Sync with visual pointer representation
-        const matchedPoi = poiData.find((p: any) => p.position.x === userPos.x && p.position.y === userPos.y);
-        if (matchedPoi) {
-            userLng = matchedPoi.lng;
-            userLat = matchedPoi.lat;
-        }
-
-        if (userMarkerRef.current) {
-            userMarkerRef.current.setPosition(new AMap.LngLat(userLng, userLat));
-        } else {
-            const userEl = document.createElement('div');
-            userEl.innerHTML = `
-                        < div style = "position: relative; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,0.6); z-index: 20;" >
-                            <div style="position: absolute; inset: -6px; border-radius: 50%; border: 1px solid #4ade80; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75;"></div>
-                </div >
-                        <style>
-                            @keyframes ping {
-                                75 %, 100 % {
-                                    transform: scale(2);
-                                    opacity: 0;
-                                }
-                            }
-                        </style>
-                    `;
-            const userMarker = new AMap.Marker({
-                position: new AMap.LngLat(userLng, userLat),
-                content: userEl,
-                offset: new AMap.Pixel(-6, -6),
-            });
-            mapInstanceRef.current.add(userMarker);
-            userMarkerRef.current = userMarker;
-        }
-
-    }, [userPos, poiData, mapLoaded]);
+    }, [currentLocId]);
 
     return (
-        <div className="absolute inset-0 bg-[#f2efe9]">
-            {/* AMap Container */}
+        <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-[#f2efe9] touch-none">
+            {/* Inner wrapper for semantic panning/zooming */}
             <div
-                ref={mapContainerRef}
-                className="w-full h-full"
-            />
+                ref={mapWrapperRef}
+                className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing origin-center"
+                style={{ transform: `translate(${mapTransform.x}px, ${mapTransform.y}px) scale(${mapTransform.scale})` }}
+                onWheel={handleWheel}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+            >
+                <canvas ref={canvasRef} className="absolute inset-0"></canvas>
 
-            {/* Loading Overlay */}
-            {!mapLoaded && (
-                <div className="absolute inset-0 flex items-center justify-center bg-[#f2efe9]/80 backdrop-blur-sm z-50">
-                    <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                {/* POI Markers */}
+                <div className="absolute inset-0 z-10 pointer-events-none">
+                    {poiData.map((poi: any) => (
+                        <div
+                            key={poi.id}
+                            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer group pointer-events-auto"
+                            style={{ left: `${poi.position.x * 100}%`, top: `${poi.position.y * 100}%` }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setUserPos(poi.position);
+                                const msgId = `bot-poi-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                                addMessage({ id: msgId, sender: 'bot', text: '' });
+                                triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image, poi.images);
+                            }}
+                        >
+                            <div className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg mb-1 group-hover:scale-110 transition-transform">
+                                {poi.icon}
+                            </div>
+                            <div className="text-[10px] text-gray-700 font-medium bg-white/60 px-1 rounded backdrop-blur-sm">
+                                {poi.name}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* User Location Node */}
+                    <div
+                        className="absolute w-3 h-3 bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.6)] -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 ease-out z-20"
+                        style={{ left: `${userPos.x * 100}%`, top: `${userPos.y * 100}%` }}
+                    >
+                        <div className="absolute inset-[-6px] rounded-full border border-green-400 animate-ping opacity-75"></div>
+                    </div>
                 </div>
-            )}
-            <style>{`
-                        .amap - logo { display: none!important; }
-                .amap - copyright { display: none!important; }
-                    `}</style>
+            </div>
         </div>
     );
 }
