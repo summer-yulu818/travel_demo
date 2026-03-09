@@ -5,9 +5,12 @@ export interface POIData {
     name: string;
     icon: string;
     position: { x: number; y: number };
+    lng: number;
+    lat: number;
     distance: string;
     narration: string;
     image: string;
+    images: string[];
 }
 
 export interface GeofenceMessage {
@@ -45,80 +48,88 @@ export interface ScenicLocation {
 
 export const fetchScenicData = async (scenicId: string): Promise<ScenicLocation | null> => {
     try {
-        // 1. Fetch Scenic Spot
-        const { data: spot, error: spotError } = await supabase
-            .from('scenic_spots')
-            .select('*')
-            .eq('id', scenicId)
-            .single();
+        // Parallel fetch for better performance
+        const [spotRes, attractionsRes, eventsRes, imagesRes] = await Promise.all([
+            supabase
+                .from('scenic_spots')
+                .select('id, name, city_name, description, longitude, latitude')
+                .eq('id', scenicId)
+                .single(),
+            supabase
+                .from('attractions')
+                .select('id, name, latitude, longitude, description')
+                .eq('scenic_id', scenicId)
+                .eq('is_active', true),
+            supabase
+                .from('events')
+                .select('id, name, attraction_id, description')
+                .eq('scenic_id', scenicId),
+            supabase
+                .from('attraction_images')
+                .select('attraction_id, image_url')
+                .eq('scenic_id', scenicId)
+        ]);
+
+        const { data: spot, error: spotError } = spotRes;
+        const { data: attractions, error: attError } = attractionsRes;
+        const { data: events, error: eventError } = eventsRes;
+        const { data: allImages, error: imgError } = imagesRes;
 
         if (spotError || !spot) {
             console.error('Error fetching scenic spot:', spotError);
             return null;
         }
 
-        // 2. Fetch Attractions (POIs)
-        const { data: attractions, error: attError } = await supabase
-            .from('attractions')
-            .select('*')
-            .eq('scenic_id', scenicId)
-            .eq('is_active', true);
-
-        if (attError) {
+        if (attError || !attractions) {
             console.error('Error fetching attractions:', attError);
             return null;
         }
 
         // 3. Normalize POIs
-        // Since coordinates in DB are lat/lng, we need to map them to x/y for the UI canvas (0-1 range)
-        // We'll use the bounding box of the attractions to normalize if possible, or fixed bounds.
-        // For Huangshan, let's look at the coordinates from import script: 118.157, 30.131
-        const lats = attractions.map(a => a.latitude).filter(l => l != null);
-        const lngs = attractions.map(a => a.longitude).filter(l => l != null);
+        const lats = attractions.map((a: any) => a.latitude).filter((l: any) => l != null);
+        const lngs = attractions.map((a: any) => a.longitude).filter((l: any) => l != null);
         const minLat = Math.min(...lats);
         const maxLat = Math.max(...lats);
         const minLng = Math.min(...lngs);
         const maxLng = Math.max(...lngs);
 
-        const poiData: POIData[] = attractions.map(a => {
+        const poiData: POIData[] = attractions.map((a: any) => {
             // Simple linear normalization for 2D UI map
             const x = (a.longitude - minLng) / (maxLng - minLng || 1) * 0.8 + 0.1;
             const y = 1 - ((a.latitude - minLat) / (maxLat - minLat || 1) * 0.8 + 0.1);
 
+            const attractionImages = allImages?.filter((img: any) => img.attraction_id === a.id).map((img: any) => img.image_url) || [];
+
             return {
                 id: a.id,
                 name: a.name,
-                icon: '⛰️', // Default icon for Huangshan
+                icon: '📍',
                 position: { x, y },
-                distance: '100m', // Mock distance
-                narration: a.description || `欢迎来到${a.name}。这里是黄山美景的一部分。`,
-                image: 'https://picsum.photos/id/1015/400/240' // Mock image
+                lng: a.longitude,
+                lat: a.latitude,
+                distance: '100m',
+                narration: a.description || `这是${a.name}，一个非常值得一游的地方。`,
+                image: attractionImages[0] || '/xiaohuang_avatar.png',
+                images: attractionImages
             };
         });
 
-        // 4. Fetch Events for Geofence Messages
-        const { data: events, error: eventError } = await supabase
-            .from('events')
-            .select('*')
-            .eq('scenic_id', scenicId);
-
-        const activeAttractionIds = new Set(attractions.map(a => a.id));
+        const activeAttractionIds = new Set(attractions.map((a: any) => a.id));
         const geofenceMessages: GeofenceMessage[] = (events || [])
-            .filter(e => !e.attraction_id || activeAttractionIds.has(e.attraction_id))
-            .map(e => ({
+            .filter((e: any) => !e.attraction_id || activeAttractionIds.has(e.attraction_id))
+            .map((e: any) => ({
                 id: String(e.id),
                 text: `📅 ${e.name}`,
                 type: 'event',
                 detail: e.description || e.name
             }));
 
-        // Add some mock promo messages if none exist
         if (geofenceMessages.length === 0) {
             geofenceMessages.push({
                 id: 'hs-promo-1',
-                text: '🍦 黄山西海饭店云海冰淇淋 8折',
+                text: '🍦 特色云海冰淇淋 8折',
                 type: 'promo',
-                detail: '出示导览界面即可享受黄山特色云海冰淇淋8折优惠。'
+                detail: '出示导览界面即可享受特色云海冰淇淋8折优惠。'
             });
         }
 
@@ -132,18 +143,18 @@ export const fetchScenicData = async (scenicId: string): Promise<ScenicLocation 
                 geofence: { lat: spot.latitude, lng: spot.longitude, radius: 5000 }
             },
             guide: {
-                id: 'xiaohuang',
-                name: '小黄',
-                title: '黄山向导'
+                id: scenicId === 'huangshan' ? 'xiaohuang' : scenicId === 'gugong' ? 'xiaogu' : 'xiaoxi',
+                name: scenicId === 'huangshan' ? '小黄' : scenicId === 'gugong' ? '小故' : '小溪',
+                title: '向导'
             },
             poiData,
             aiResponses: {
-                history: [spot.description || '黄山，位于安徽省南部，以奇松、怪石、云海、温泉、冬雪“五绝”及大峡谷“一绝”闻名于世，被誉为“天下第一奇山”。'],
-                route: ['推荐路线：慈光阁 -> 玉屏楼 (迎客松) -> 莲花峰 -> 高峰 -> 排云亭 -> 西海大峡谷 -> 丹霞峰 -> 松谷庵。'],
-                tips: ['黄山气候多变，建议携带雨具；山顶昼夜温差大，请备好保暖衣物。游览西海大峡谷建议保持体力。'],
-                food: ['黄山特色美食有毛豆腐、臭鳜鱼、烧饼等，下山后可在屯溪老街品尝地道徽菜。'],
-                photo: ['迎客松、始信峰、排云亭都是摄影发烧友的必选之地。特别是云海出现时，随手一拍都是大片。'],
-                fallback: ['关于黄山的奇松怪石，或是您的登山路线，尽可以问我。']
+                history: [spot.description || '这里是著名景点，有着悠久的历史。'],
+                route: ['推荐游览路线：从正门进入，按顺时针方向游览主要景点。'],
+                tips: ['建议携带雨具，防晒并备好充足的水。'],
+                food: ['当地特色美食有各种地道风味小吃，下山后可前往美食街品尝。'],
+                photo: ['这些地方都是摄影绝佳位置，特别是在日出或日落时分。'],
+                fallback: ['关于这片景区的历史和故事，尽管问我。']
             },
             geofenceMessages
         };

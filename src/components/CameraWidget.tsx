@@ -1,20 +1,70 @@
 import { useState, useRef, useEffect } from 'react';
 import { useTourStore } from '../store/useTourStore';
+import { useVisionMatch } from '../hooks/useVisionMatch';
+import { useVisionScanner } from '../hooks/useVisionScanner';
+import { VISION_CONFIG } from '../config/constants';
 
 export default function CameraWidget() {
     const videoRef = useRef<HTMLVideoElement>(null);
     const streamRef = useRef<MediaStream | null>(null);
-    const { cameraActive, setCameraActive } = useTourStore();
+    const { cameraActive, setCameraActive, isVisionActive, setVisionActive, currentLocId, currentLoc, setUserPos, triggerTTS, addMessage, enableCloudVision, avatarPaused, avatarTalking, addDebugLog } = useTourStore();
     const [facingMode, setFacingMode] = useState<'user' | 'environment'>('user');
+    const floatRef = useRef<HTMLDivElement>(null);
+    const [pos, setPos] = useState({ x: 16, y: 16 }); // Initial top-4 left-4 position
+
+    // Handle dragging
+    useEffect(() => {
+        const el = floatRef.current;
+        if (!el) return;
+
+        let isDragging = false;
+        let offsetX = 0;
+        let offsetY = 0;
+
+        const onPointerDown = (e: PointerEvent) => {
+            if ((e.target as HTMLElement).tagName === 'BUTTON') return;
+            isDragging = true;
+            offsetX = e.clientX - pos.x;
+            offsetY = e.clientY - pos.y;
+            el.setPointerCapture(e.pointerId);
+            el.style.transform = 'scale(1.02)';
+        };
+
+        const onPointerMove = (e: PointerEvent) => {
+            if (!isDragging) return;
+            setPos({
+                x: e.clientX - offsetX,
+                y: e.clientY - offsetY,
+            });
+        };
+
+        const onPointerUp = (e: PointerEvent) => {
+            isDragging = false;
+            el.releasePointerCapture(e.pointerId);
+            el.style.transform = 'none';
+        };
+
+        el.addEventListener('pointerdown', onPointerDown);
+        el.addEventListener('pointermove', onPointerMove);
+        el.addEventListener('pointerup', onPointerUp);
+        el.addEventListener('pointercancel', onPointerUp);
+
+        return () => {
+            el.removeEventListener('pointerdown', onPointerDown);
+            el.removeEventListener('pointermove', onPointerMove);
+            el.removeEventListener('pointerup', onPointerUp);
+            el.removeEventListener('pointercancel', onPointerUp);
+        };
+    }, [pos.x, pos.y]);
 
     useEffect(() => {
-        if (cameraActive) {
+        if (cameraActive || isVisionActive) {
             startCamera();
         } else {
             stopCamera();
         }
         return stopCamera;
-    }, [cameraActive, facingMode]);
+    }, [cameraActive, isVisionActive, facingMode]);
 
     const startCamera = async () => {
         stopCamera();
@@ -39,15 +89,50 @@ export default function CameraWidget() {
         }
     };
 
-    if (!cameraActive) return null;
+    const { modelReady, matchFromVideo } = useVisionMatch({ matchThreshold: VISION_CONFIG.MATCH_THRESHOLD, matchCount: 1, engine: 'mediapipe' });
+
+    useVisionScanner({
+        appMode: 'normal',
+        isPlaying: !avatarPaused, // Only run scanner when digital human is active
+        modelReady,
+        isVisionActive: isVisionActive || cameraActive,
+        selectedScenicId: currentLocId,
+        enableLocationFilter: false,
+        userLocation: null,
+        activePOIs: currentLoc.poiData || [],
+        isTyping: avatarTalking,
+        matchFromVideo: async (video, id, ids) => await matchFromVideo(video, id, ids),
+        addDebugLog: (type, text) => {
+            console.log(`[Vision ${type}] ${text}`);
+            addDebugLog(type, text);
+        },
+        currentPoiIndex: -1,
+        enableCloudVision: enableCloudVision,
+        onMatch: (index) => {
+            const poi = currentLoc.poiData[index];
+            if (poi && !avatarPaused) {
+                setUserPos(poi.position);
+                const msgId = `bot-poi-${Date.now()}`;
+                addMessage({ id: msgId, sender: 'bot', text: '' });
+                triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image, poi.images);
+            }
+        }
+    });
+
+    if (!cameraActive && !isVisionActive) return null;
 
     return (
-        <div className="absolute top-4 left-4 w-28 h-36 bg-black rounded-lg overflow-hidden shadow-lg border border-gray-600 z-30">
+        <div
+            ref={floatRef}
+            className="fixed w-28 h-36 bg-black rounded-lg overflow-hidden shadow-[0_8px_30px_rgb(0,0,0,0.12)] border border-gray-600 z-50 transition-shadow cursor-grab active:cursor-grabbing touch-none"
+            style={{ left: pos.x, top: pos.y }}
+        >
             <video
+                id="tour-camera-video"
                 ref={videoRef}
                 autoPlay
                 playsInline
-                className="w-full h-full object-cover"
+                className="w-full h-full object-cover pointer-events-none"
                 style={{ transform: facingMode === 'user' ? 'scaleX(-1)' : 'none' }}
             ></video>
             <div className="absolute inset-x-0 bottom-2 flex justify-center space-x-3">
@@ -132,6 +217,8 @@ export default function CameraWidget() {
                         });
                     }}
                     className="snap-btn w-10 h-10 border-2 border-white rounded-full bg-white/30 backdrop-blur-sm transition-transform shadow-md"
+                    disabled={isVisionActive && !cameraActive}
+                    style={{ opacity: isVisionActive && !cameraActive ? 0.3 : 1 }}
                 ></button>
             </div>
             <button

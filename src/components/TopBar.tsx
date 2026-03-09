@@ -1,8 +1,9 @@
 import { useEffect, useState } from 'react';
 import { useTourStore } from '../store/useTourStore';
+import { Camera } from 'lucide-react';
 
 export default function TopBar() {
-    const { currentLocId, currentLoc, setLocId } = useTourStore();
+    const { currentLocId, currentLoc, setLocId, isVisionActive, setVisionActive } = useTourStore();
     const [timeStr, setTimeStr] = useState('');
 
     useEffect(() => {
@@ -36,7 +37,14 @@ export default function TopBar() {
                         <option value="antspace">蚂蚁空间</option>
                     </select>
                 </div>
-                <div className="flex items-center space-x-1 text-gray-500 text-[11px]">
+                <div className="flex items-center space-x-2 text-gray-500 text-[11px]">
+                    <button
+                        onClick={() => setVisionActive(!isVisionActive)}
+                        className={`p-1.5 rounded-full transition-colors shadow-sm ${isVisionActive ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                        title={isVisionActive ? "关闭实景扫描" : "开启实景扫描"}
+                    >
+                        <Camera size={14} className={isVisionActive ? 'animate-pulse' : ''} />
+                    </button>
                     <span>☀️ 22°</span>
                     <div className="w-5 h-2.5 border border-gray-400 rounded-[3px] p-[1px] relative flex items-center">
                         <div className="h-full bg-green-500 rounded-[1px] w-[80%]"></div>
@@ -51,7 +59,7 @@ export default function TopBar() {
 }
 
 function GeofenceBar() {
-    const { currentLoc, gfMsgIndex, setGfMsgIndex } = useTourStore();
+    const { currentLoc, gfMsgIndex, setGfMsgIndex, triggerTTS } = useTourStore();
     const area = currentLoc.scenicArea;
     const messages = currentLoc.geofenceMessages || [];
 
@@ -80,10 +88,20 @@ function GeofenceBar() {
                     </span>
                 ))}
             </div>
-            <div className="flex-1 overflow-hidden relative h-5 leading-5 pl-3 cursor-pointer text-blue-700 opacity-90">
+            <div
+                className="flex-1 overflow-hidden relative h-5 leading-5 pl-3 cursor-pointer text-blue-700 opacity-90 hover:text-blue-800 active:scale-95 transition-all group"
+                onClick={() => {
+                    const msg = messages[gfMsgIndex] || messages[0];
+                    if (msg) {
+                        // Formal structured trigger
+                        const fullText = `【${msg.text}】\n\n为您找到以下优惠活动信息：${msg.detail}`;
+                        triggerTTS(`promo-${Date.now()}`, fullText);
+                    }
+                }}
+            >
                 {messages.length > 0 ? (
-                    <div className="absolute w-full transition-transform duration-500 ease-in-out whitespace-nowrap">
-                        {messages[useTourStore.getState().gfMsgIndex]?.text || messages[0]?.text}
+                    <div className="absolute w-full transition-transform duration-500 ease-in-out whitespace-nowrap group-hover:underline decoration-blue-300 decoration-2 underline-offset-4">
+                        {messages[gfMsgIndex]?.text || messages[0]?.text}
                     </div>
                 ) : (
                     <span className="text-gray-400">当前区域无特殊活动</span>

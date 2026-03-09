@@ -1,114 +1,170 @@
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import AMapLoader from '@amap/amap-jsapi-loader';
 import { useTourStore } from '../store/useTourStore';
 
 export default function MapLayer() {
-    const canvasRef = useRef<HTMLCanvasElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
-    const { currentLocId, currentLoc, userPos, setUserPos, avatarPaused, addMessage, triggerTTS } = useTourStore();
+    const { currentLoc, setUserPos, avatarPaused, addMessage, triggerTTS, userPos } = useTourStore();
+    const mapContainerRef = useRef<HTMLDivElement>(null);
+    const mapInstanceRef = useRef<any>(null);
+    const AMapRef = useRef<any>(null);
+    const markersRef = useRef<any[]>([]);
+    const userMarkerRef = useRef<any>(null);
+    const [mapLoaded, setMapLoaded] = useState(false);
 
-    const poiData = currentLoc.poiData || [];
+    const poiData = currentLoc?.poiData || [];
 
+    // Initialize AMap
     useEffect(() => {
-        const canvas = canvasRef.current;
-        if (!canvas || !containerRef.current) return;
+        let map: any = null;
 
-        // Setup canvas
-        const w = containerRef.current.clientWidth;
-        const h = containerRef.current.clientHeight;
-        canvas.width = w;
-        canvas.height = h;
-        const ctx = canvas.getContext('2d');
-        if (!ctx) return;
+        AMapLoader.load({
+            key: import.meta.env.VITE_AMAP_KEY,
+            version: '2.0',
+        }).then((AMap: any) => {
+            if (!mapContainerRef.current) return;
 
-        let animId: number;
-        let time = 0;
+            AMapRef.current = AMap;
 
-        // bg particles
-        const particles = Array.from({ length: currentLocId === 'gugong' ? 15 : 30 }).map(() => ({
-            x: Math.random() * w,
-            y: Math.random() * h,
-            size: Math.random() * 2 + 1,
-            speedY: Math.random() * 0.5 + 0.1,
-            speedX: (Math.random() - 0.5) * 0.3,
-            opacity: Math.random() * 0.5 + 0.1
-        }));
-
-        const render = () => {
-            ctx.clearRect(0, 0, w, h);
-            time += 0.02;
-
-            // Draw map radar grids
-            ctx.strokeStyle = currentLocId === 'gugong' ? 'rgba(217, 119, 119, 0.1)' : 'rgba(100, 150, 255, 0.1)';
-            ctx.lineWidth = 1;
-
-            const cx = w / 2;
-            const cy = h / 2;
-
-            for (let r = 50; r < Math.max(w, h); r += 80) {
-                ctx.beginPath();
-                ctx.arc(cx, cy, r + Math.sin(time + r) * 5, 0, Math.PI * 2);
-                ctx.stroke();
-            }
-
-            // Draw particles
-            particles.forEach(p => {
-                p.y -= p.speedY;
-                p.x += p.speedX;
-                if (p.y < 0) { p.y = h; p.x = Math.random() * w; }
-
-                ctx.fillStyle = currentLocId === 'gugong'
-                    ? `rgba(255, 215, 0, ${p.opacity})` // 金色粒子
-                    : `rgba(255, 255, 255, ${p.opacity})`; // 白色粒子
-
-                ctx.beginPath();
-                ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
-                ctx.fill();
+            map = new AMap.Map(mapContainerRef.current, {
+                zoom: 16,
+                center: poiData.length > 0 ? [poiData[0].lng, poiData[0].lat] : [116.397026, 39.917],
+                mapStyle: 'amap://styles/whitesmoke',
+                resizeEnable: true,
+                pitchEnable: false,
+                rotateEnable: false,
+                dragEnable: true,
+                zoomEnable: true,
+                showLabel: true,
+                features: ['bg', 'road', 'building', 'point'],
             });
 
-            animId = requestAnimationFrame(render);
-        };
-        render();
+            mapInstanceRef.current = map;
+            setMapLoaded(true);
+        }).catch((e: any) => {
+            console.error('AMap load error:', e);
+        });
 
-        return () => cancelAnimationFrame(animId);
-    }, [currentLocId]);
+        return () => {
+            if (map) {
+                map.destroy();
+            }
+        };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
+
+    // Render Markers after map load
+    useEffect(() => {
+        if (!mapInstanceRef.current || !mapLoaded || !AMapRef.current) return;
+        const AMap = AMapRef.current;
+
+        // Clear existing markers
+        markersRef.current.forEach(m => mapInstanceRef.current.remove(m));
+        markersRef.current = [];
+
+        if (poiData.length === 0) return;
+
+        // Add POI markers
+        poiData.forEach((poi: any) => {
+            const el = document.createElement('div');
+            el.className = 'amap-poi-marker';
+            el.innerHTML = `
+                <div style="display: flex; flex-direction: column; align-items: center; cursor: pointer; transform: translate(-50%, -100%); transition: transform 0.2s; pointer-events: auto;">
+                    <div style="width: 32px; height: 32px; border-radius: 50%; background: white; box-shadow: 0 4px 6px -1px rgb(0 0 0 / 0.1); display: flex; align-items: center; justify-content: center; font-size: 18px; margin-bottom: 4px; z-index: 10;">
+                        ${poi.icon || '📍'}
+                    </div>
+                    <div style="font-size: 10px; color: #374151; font-weight: 500; background: rgba(255, 255, 255, 0.8); padding: 0 4px; border-radius: 4px; backdrop-filter: blur(4px); white-space: nowrap;">
+                        ${poi.name}
+                    </div>
+                </div>
+            `;
+
+            const marker = new AMap.Marker({
+                position: new AMap.LngLat(poi.lng, poi.lat),
+                content: el,
+                offset: new AMap.Pixel(0, 0),
+                anchor: 'bottom-center',
+                extData: poi
+            });
+
+            marker.on('click', () => {
+                setUserPos(poi.position);
+                if (!avatarPaused) {
+                    const msgId = `bot-poi-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
+                    addMessage({ id: msgId, sender: 'bot', text: '' });
+                    triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image, poi.images);
+                }
+            });
+
+            mapInstanceRef.current.add(marker);
+            markersRef.current.push(marker);
+        });
+
+        // Fit map bounds
+        mapInstanceRef.current.setFitView(null, false, [40, 40, 40, 40]);
+
+    }, [poiData, mapLoaded, avatarPaused, addMessage, setUserPos, triggerTTS]);
+
+    // Handle user location marker
+    useEffect(() => {
+        if (!mapInstanceRef.current || !mapLoaded || !AMapRef.current) return;
+        const AMap = AMapRef.current;
+
+        let userLng = poiData[0]?.lng || 116.397026;
+        let userLat = poiData[0]?.lat || 39.917;
+
+        // Sync with visual pointer representation
+        const matchedPoi = poiData.find((p: any) => p.position.x === userPos.x && p.position.y === userPos.y);
+        if (matchedPoi) {
+            userLng = matchedPoi.lng;
+            userLat = matchedPoi.lat;
+        }
+
+        if (userMarkerRef.current) {
+            userMarkerRef.current.setPosition(new AMap.LngLat(userLng, userLat));
+        } else {
+            const userEl = document.createElement('div');
+            userEl.innerHTML = `
+                        < div style = "position: relative; width: 12px; height: 12px; border-radius: 50%; background: #22c55e; box-shadow: 0 0 10px rgba(34,197,94,0.6); z-index: 20;" >
+                            <div style="position: absolute; inset: -6px; border-radius: 50%; border: 1px solid #4ade80; animation: ping 1s cubic-bezier(0, 0, 0.2, 1) infinite; opacity: 0.75;"></div>
+                </div >
+                        <style>
+                            @keyframes ping {
+                                75 %, 100 % {
+                                    transform: scale(2);
+                                    opacity: 0;
+                                }
+                            }
+                        </style>
+                    `;
+            const userMarker = new AMap.Marker({
+                position: new AMap.LngLat(userLng, userLat),
+                content: userEl,
+                offset: new AMap.Pixel(-6, -6),
+            });
+            mapInstanceRef.current.add(userMarker);
+            userMarkerRef.current = userMarker;
+        }
+
+    }, [userPos, poiData, mapLoaded]);
 
     return (
-        <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-gradient-to-br from-blue-50 to-blue-100">
-            <canvas ref={canvasRef} className="absolute inset-0 opacity-60"></canvas>
+        <div className="absolute inset-0 bg-[#f2efe9]">
+            {/* AMap Container */}
+            <div
+                ref={mapContainerRef}
+                className="w-full h-full"
+            />
 
-            {/* POI Markers */}
-            <div className="absolute inset-0 z-10 pointer-events-none">
-                {poiData.map((poi: any, i: number) => (
-                    <div
-                        key={poi.id}
-                        className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer group pointer-events-auto"
-                        style={{ left: `${poi.position.x * 100}%`, top: `${poi.position.y * 100}%` }}
-                        onClick={() => {
-                            setUserPos(poi.position);
-                            if (!avatarPaused) {
-                                const msgId = `bot-poi-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
-                                addMessage({ id: msgId, sender: 'bot', text: '' });
-                                triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image);
-                            }
-                        }}
-                    >
-                        <div className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg mb-1 group-hover:scale-110 transition-transform">
-                            {poi.icon}
-                        </div>
-                        <div className="text-[10px] text-gray-700 font-medium bg-white/60 px-1 rounded backdrop-blur-sm">
-                            {poi.name}
-                        </div>
-                    </div>
-                ))}
-
-                {/* User Location Node */}
-                <div
-                    className="absolute w-3 h-3 bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.6)] -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 ease-out z-20"
-                    style={{ left: `${userPos.x * 100}%`, top: `${userPos.y * 100}%` }}
-                >
-                    <div className="absolute inset-[-6px] rounded-full border border-green-400 animate-ping opacity-75"></div>
+            {/* Loading Overlay */}
+            {!mapLoaded && (
+                <div className="absolute inset-0 flex items-center justify-center bg-[#f2efe9]/80 backdrop-blur-sm z-50">
+                    <div className="w-8 h-8 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
                 </div>
-            </div>
+            )}
+            <style>{`
+                        .amap - logo { display: none!important; }
+                .amap - copyright { display: none!important; }
+                    `}</style>
         </div>
     );
 }

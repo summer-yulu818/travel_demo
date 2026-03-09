@@ -5,11 +5,19 @@ import { fetchScenicData, ScenicLocation } from '../services/scenicService';
 
 type Point = { x: number; y: number };
 
+export interface DebugLog {
+    id: string;
+    ts: string;
+    type: string;
+    detail: string;
+}
+
 export type Message = {
     id: string;
     sender: 'user' | 'bot';
     text: string;
     imageUrl?: string;
+    images?: string[];
     isTyping?: boolean;
 };
 
@@ -22,10 +30,14 @@ interface TourState {
     avatarTalking: boolean;
     simRunning: boolean;
     cameraActive: boolean;
+    isVisionActive: boolean;
+    enableCloudVision: boolean;
     gfMsgIndex: number;
     steps: number;
     messages: Message[];
-    currentTTS: { id: string; text: string; imageUrl?: string } | null;
+    debugLogs: DebugLog[];
+    showDebugPanel: boolean;
+    currentTTS: { id: string; text: string; imageUrl?: string; images?: string[] } | null;
 
     // Actions
     setLocId: (id: string) => Promise<void>;
@@ -34,11 +46,16 @@ interface TourState {
     setAvatarTalking: (talking: boolean) => void;
     setSimRunning: (running: boolean) => void;
     setCameraActive: (active: boolean) => void;
+    setVisionActive: (active: boolean) => void;
+    setEnableCloudVision: (enable: boolean) => void;
     setGfMsgIndex: (idx: number) => void;
     incrementSteps: (val: number) => void;
     addMessage: (msg: Message) => void;
     updateMessage: (id: string, partial: Partial<Message>) => void;
-    triggerTTS: (id: string, text: string, imageUrl?: string) => void;
+    addDebugLog: (type: string, detail: string) => void;
+    clearDebugLogs: () => void;
+    setShowDebugPanel: (show: boolean) => void;
+    triggerTTS: (id: string, text: string, imageUrl?: string, images?: string[]) => void;
     clearTTS: () => void;
 }
 
@@ -75,17 +92,23 @@ export const useTourStore = create<TourState>((set, get) => ({
     avatarTalking: false,
     simRunning: false,
     cameraActive: false,
+    isVisionActive: false,
+    enableCloudVision: false,
     gfMsgIndex: 0,
     steps: 0,
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
+    debugLogs: [],
+    showDebugPanel: true,
     currentTTS: null,
 
     setLocId: async (id) => {
+        // Update ID immediately for responsive UI
+        set({ currentLocId: id });
+
         // 1. Check static
         if (staticLocations[id]) {
             const loc = staticLocations[id];
             set({
-                currentLocId: id,
                 currentLoc: loc,
                 userPos: loc.poiData[0]?.position || { x: 0.5, y: 0.5 }
             });
@@ -97,7 +120,6 @@ export const useTourStore = create<TourState>((set, get) => ({
         if (dynamicLocations[id]) {
             const loc = dynamicLocations[id];
             set({
-                currentLocId: id,
                 currentLoc: loc,
                 userPos: loc.poiData[0]?.position || { x: 0.5, y: 0.5 }
             });
@@ -109,7 +131,6 @@ export const useTourStore = create<TourState>((set, get) => ({
         if (locData) {
             (locData as any).walkPath = buildPath(locData.poiData);
             set((state) => ({
-                currentLocId: id,
                 currentLoc: locData,
                 dynamicLocations: { ...state.dynamicLocations, [id]: locData },
                 userPos: locData.poiData[0]?.position || { x: 0.5, y: 0.5 }
@@ -123,12 +144,22 @@ export const useTourStore = create<TourState>((set, get) => ({
     setAvatarTalking: (talking) => set({ avatarTalking: talking }),
     setSimRunning: (running) => set({ simRunning: running }),
     setCameraActive: (active) => set({ cameraActive: active }),
+    setVisionActive: (active) => set({ isVisionActive: active }),
+    setEnableCloudVision: (enable) => set({ enableCloudVision: enable }),
     setGfMsgIndex: (idx) => set({ gfMsgIndex: idx }),
     incrementSteps: (val) => set((state) => ({ steps: state.steps + val })),
     addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),
     updateMessage: (id, partial) => set((state) => ({
         messages: state.messages.map(m => m.id === id ? { ...m, ...partial } : m)
     })),
-    triggerTTS: (id, text, imageUrl) => set({ currentTTS: { id, text, imageUrl } }),
+    addDebugLog: (type, detail) => set((state) => {
+        const ts = new Date().toISOString().split('T')[1].slice(0, 8);
+        const newLog = { id: Math.random().toString(36).substr(2, 9), ts, type, detail };
+        // Chronological order: latest at the bottom
+        return { debugLogs: [...state.debugLogs, newLog].slice(-50) };
+    }),
+    clearDebugLogs: () => set({ debugLogs: [] }),
+    setShowDebugPanel: (show: boolean) => set({ showDebugPanel: show }),
+    triggerTTS: (id, text, imageUrl, images) => set({ currentTTS: { id, text, imageUrl, images } }),
     clearTTS: () => set({ currentTTS: null }),
 }));
