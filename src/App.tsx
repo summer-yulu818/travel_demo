@@ -8,7 +8,7 @@ import { useTourStore } from './store/useTourStore';
 
 export default function App() {
     const [showSplash, setShowSplash] = useState(true);
-    const { currentLocId, currentLoc, avatarPaused, setAvatarPaused, setUserPos, addMessage, triggerTTS } = useTourStore();
+    const { currentLocId, currentLoc, avatarPaused, setAvatarPaused, setUserPos, addMessage, triggerTTS, setCameraActive } = useTourStore();
     const tourRef = useRef<boolean>(false);
     const lockRef = useRef<boolean>(false);
 
@@ -21,9 +21,12 @@ export default function App() {
     useEffect(() => {
         if (avatarPaused || !currentLoc.poiData) return;
 
+        // Auto-enable camera when the tour is unpaused and active
+        setCameraActive(true);
+
         const welcomeId = `bot-${Date.now()}-${Math.random().toString(36).substr(2, 5)}`;
         addMessage({ id: welcomeId, sender: 'bot', text: '' });
-        triggerTTS(welcomeId, `导览已启动！我是您的专属智能伴游 ${currentLoc.guide.name}，请点击地图上的景点，我将为您详细解说。`);
+        triggerTTS(welcomeId, `导览已启动！我是您的专属智能伴游 ${currentLoc.guide.name}。我已经为您开启了环境感知之眼 👀。强烈建议您戴上AI智能眼镜，即刻开启这场打破次元壁的沉浸式旅行体验！沿途看到感兴趣的风景，都可以随时问我哦~`);
     }, [avatarPaused, currentLocId]);
 
     if (showSplash) {
@@ -50,7 +53,10 @@ export default function App() {
             </div>
 
             {/* 聊天会话区 (下半部) */}
-            <div className="flex-1 min-h-0 flex flex-col bg-transparent relative z-10 -mt-10 px-8 pb-12">
+            <div
+                className="flex-1 min-h-0 flex flex-col bg-transparent relative z-10 px-8 pb-2"
+                style={{ marginTop: '-20px' }}
+            >
                 <div className="flex-1 flex flex-col bg-white rounded-t-[32px] rounded-b-3xl shadow-[0_-8px_30px_rgba(0,0,0,0.08)] overflow-hidden">
                     {/* 顶部中央的小横条 (Drag Handle) */}
                     <div className="w-full h-8 shrink-0 flex items-center justify-center relative bg-white z-20">
