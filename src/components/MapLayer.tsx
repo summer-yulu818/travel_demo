@@ -3,6 +3,16 @@ import AMapLoader from '@amap/amap-jsapi-loader';
 import { useTourStore } from '../store/useTourStore';
 
 export default function MapLayer() {
+    const { useAMap } = useTourStore();
+
+    if (useAMap) {
+        return <AMapView />;
+    } else {
+        return <VirtualMapView />;
+    }
+}
+
+function AMapView() {
     const mapContainerRef = useRef<HTMLDivElement>(null);
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const mapInstanceRef = useRef<any>(null);
@@ -13,13 +23,9 @@ export default function MapLayer() {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const userMarkerRef = useRef<any>(null);
     const [mapLoaded, setMapLoaded] = useState(false);
-
-    // Using existing store properties. currentPoiId does not exist, so we use currentLocId or local state
-    // Actually, looking at the previous implementation, it didn't use currentPoiId, it used userPos and currentLoc.
-    // For this demo, let's add local state for the active marker.
     const [activePoiId, setActivePoiId] = useState<string | null>(null);
 
-    const { currentLoc, addMessage, triggerTTS, enablePosSimulation, simulatedPos, setSimulatedPos } = useTourStore();
+    const { currentLoc, addMessage, triggerTTS, enablePosSimulation, simulatedPos, setSimulatedPos, mapZoom } = useTourStore();
     const poiData = currentLoc?.poiData || [];
 
     // Initialize AMap
@@ -37,8 +43,7 @@ export default function MapLayer() {
             map = new AMap.Map(mapContainerRef.current, {
                 viewMode: '3D',
                 pitch: 45,
-                zoom: 14, // 14 级大概覆盖一公里左右视野
-                // Default center to Westlake if no POI data
+                zoom: mapZoom,
                 center: poiData.length > 0 && poiData[0].lng ? [poiData[0].lng, poiData[0].lat] : [120.1472, 30.2638],
                 mapStyle: 'amap://styles/whitesmoke',
                 resizeEnable: true,
@@ -51,7 +56,6 @@ export default function MapLayer() {
             mapInstanceRef.current = map;
             setMapLoaded(true);
 
-            // Fetch positions via global state and update simulatedPos on click
             map.on('click', (e: any) => {
                 const state = useTourStore.getState();
                 if (state.enablePosSimulation) {
@@ -69,7 +73,7 @@ export default function MapLayer() {
             }
         };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, []); // Initialize once
+    }, []);
 
     // Update markers and polyline when poiData changes
     useEffect(() => {
@@ -78,18 +82,14 @@ export default function MapLayer() {
         const AMap = (window as any).AMap;
         if (!AMap) return;
 
-        // 1. Clear previous markers
         markersRef.current.forEach(m => mapInstanceRef.current.remove(m.marker));
         markersRef.current = [];
 
-        // 2. Clear previous polyline
         if (polylineRef.current) {
             mapInstanceRef.current.remove(polylineRef.current);
             polylineRef.current = null;
         }
 
-        // 3. Add new polyline
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const path = poiData.filter((p: any) => p.lng && p.lat).map((p: any) => new AMap.LngLat(p.lng, p.lat));
         if (path.length > 0) {
             const polyline = new AMap.Polyline({
@@ -106,8 +106,6 @@ export default function MapLayer() {
             polylineRef.current = polyline;
         }
 
-        // 4. Add new POI markers
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         const markers = poiData.filter((p: any) => p.lng && p.lat).map((poi: any) => {
             const isActive = activePoiId === poi.id;
             const markerContent = document.createElement('div');
@@ -135,7 +133,6 @@ export default function MapLayer() {
                 </div>
             `;
 
-            // Make marker clickable
             markerContent.onclick = (e) => {
                 e.stopPropagation();
                 setActivePoiId(poi.id);
@@ -159,7 +156,6 @@ export default function MapLayer() {
         });
         markersRef.current = markers;
 
-        // 5. If markers exist, softly pan to the first one or user position but don't force fitView which ruins the zoom scale
         if (markers.length > 0) {
             setTimeout(() => {
                 const state = useTourStore.getState();
@@ -170,86 +166,18 @@ export default function MapLayer() {
                 }
             }, 50);
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [poiData, mapLoaded, activePoiId, addMessage, triggerTTS]);
 
-    // Update marker styles when activePoiId changes
     useEffect(() => {
         if (!mapInstanceRef.current || !mapLoaded) return;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const AMap = (window as any).AMap;
-        if (!AMap) return;
-
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        markersRef.current.forEach(({ marker, poiId }: any) => {
-            const isActive = activePoiId === poiId;
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const poi = poiData.find((p: any) => p.id === poiId);
-            if (!poi) return;
-
-            const markerContent = document.createElement('div');
-            markerContent.className = 'amap-poi-marker';
-            markerContent.innerHTML = `
-                <div style="
-                    display: flex; flex-direction: column; align-items: center; gap: 4px; border: none;
-                    transform: translate(-50%, -100%); cursor: pointer;
-                ">
-                    <span style="
-                        font-size: 10px; font-weight: 700; 
-                        padding: 2px 8px; border-radius: 9999px;
-                        background: ${isActive ? '#f59e0b' : 'rgba(255,255,255,0.9)'};
-                        color: ${isActive ? '#fff' : '#475569'};
-                        border: 1px solid ${isActive ? '#f59e0b' : '#e2e8f0'};
-                        box-shadow: 0 2px 6px rgba(0,0,0,0.1);
-                        white-space: nowrap;
-                        transition: all 0.3s ease;
-                    ">${poi.icon} ${poi.name}</span>
-                    <div style="
-                        width: ${isActive ? '16px' : '12px'}; 
-                        height: ${isActive ? '16px' : '12px'}; 
-                        border-radius: 50%;
-                        background: ${isActive ? '#f59e0b' : '#94a3b8'};
-                        border: 2px solid ${isActive ? '#fde68a' : '#e2e8f0'};
-                        box-shadow: ${isActive ? '0 0 12px rgba(245,158,11,0.6)' : 'none'};
-                        transition: all 0.3s ease;
-                    "></div>
-                </div>
-            `;
-
-            markerContent.onclick = (e) => {
-                e.stopPropagation();
-                setActivePoiId(poi.id);
-                const state = useTourStore.getState();
-                if (state.enablePosSimulation) {
-                    state.setSimulatedPos({ lng: poi.lng, lat: poi.lat });
-                }
-                const msgId = `bot-poi-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-                addMessage({ id: msgId, sender: 'bot', text: '' });
-                triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image, poi.images);
-            };
-
-            marker.setContent(markerContent);
-        });
-
-        // Smooth pan to current POI location
-        const activePoi = poiData.find((p: any) => p.id === activePoiId);
-        if (activePoi && activePoi.lng && activePoi.lat) {
-            mapInstanceRef.current.panTo(new AMap.LngLat(activePoi.lng, activePoi.lat));
-        }
-    }, [activePoiId, mapLoaded, poiData, addMessage, triggerTTS]);
-
-    // Update user marker based on simulated position
-    useEffect(() => {
-        if (!mapInstanceRef.current || !mapLoaded) return;
-        // eslint-disable-next-line @typescript-eslint/no-explicit-any
-        const AMap = (window as any).AMap;
-
         if (enablePosSimulation) {
             if (!simulatedPos && poiData.length > 0 && poiData[0].lng) {
                 setSimulatedPos({ lng: poiData[0].lng, lat: poiData[0].lat });
                 return;
             }
-
             if (simulatedPos) {
+                const AMap = (window as any).AMap;
                 if (userMarkerRef.current) {
                     userMarkerRef.current.setPosition(new AMap.LngLat(simulatedPos.lng, simulatedPos.lat));
                     userMarkerRef.current.show();
@@ -287,9 +215,9 @@ export default function MapLayer() {
                 userMarkerRef.current.hide();
             }
         }
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [enablePosSimulation, simulatedPos, mapLoaded, poiData, setSimulatedPos]);
 
-    const mapZoom = useTourStore(state => state.mapZoom);
     useEffect(() => {
         if (mapInstanceRef.current && mapLoaded) {
             mapInstanceRef.current.setZoom(mapZoom);
@@ -298,12 +226,7 @@ export default function MapLayer() {
 
     return (
         <div className="absolute inset-0 overflow-hidden bg-[#f2efe9] touch-none">
-            {/* AMap Container */}
-            <div
-                ref={mapContainerRef}
-                className="w-full h-full"
-            />
-            {/* Loading overlay */}
+            <div ref={mapContainerRef} className="w-full h-full" />
             {!mapLoaded && (
                 <div className="absolute inset-0 bg-[#f2efe9] flex items-center justify-center z-10">
                     <div className="text-center">
@@ -322,6 +245,197 @@ export default function MapLayer() {
                 .amap-logo { display: none !important; }
                 .amap-copyright { display: none !important; }
             `}</style>
+        </div>
+    );
+}
+
+function VirtualMapView() {
+    const { currentLocId, currentLoc, userPos, addMessage, triggerTTS, setUserPos } = useTourStore();
+    const poiData = currentLoc?.poiData || [];
+    const containerRef = useRef<HTMLDivElement>(null);
+    const canvasRef = useRef<HTMLCanvasElement>(null);
+    const mapWrapperRef = useRef<HTMLDivElement>(null);
+
+    // Map Pan/Zoom state
+    const [mapTransform, setMapTransform] = useState({ scale: 1, x: 0, y: 0 });
+    const isDraggingMap = useRef(false);
+    const lastPos = useRef({ x: 0, y: 0 });
+
+    const handleWheel = (e: React.WheelEvent) => {
+        e.preventDefault();
+        const zoomDelta = -e.deltaY * 0.001;
+        setMapTransform(prev => ({
+            ...prev,
+            scale: Math.min(Math.max(0.5, prev.scale + zoomDelta), 3)
+        }));
+    };
+
+    const handlePointerDown = (e: React.PointerEvent) => {
+        isDraggingMap.current = true;
+        lastPos.current = { x: e.clientX, y: e.clientY };
+        if (mapWrapperRef.current) {
+            mapWrapperRef.current.setPointerCapture(e.pointerId);
+        }
+    };
+
+    const handlePointerMove = (e: React.PointerEvent) => {
+        if (!isDraggingMap.current) return;
+        const dx = (e.clientX - lastPos.current.x);
+        const dy = (e.clientY - lastPos.current.y);
+        lastPos.current = { x: e.clientX, y: e.clientY };
+        setMapTransform(prev => ({
+            ...prev,
+            x: prev.x + dx,
+            y: prev.y + dy
+        }));
+    };
+
+    const handlePointerUp = (e: React.PointerEvent) => {
+        isDraggingMap.current = false;
+        if (mapWrapperRef.current) {
+            mapWrapperRef.current.releasePointerCapture(e.pointerId);
+        }
+    };
+
+    useEffect(() => {
+        if (!canvasRef.current || !containerRef.current) return;
+
+        const canvas = canvasRef.current;
+        const container = containerRef.current;
+
+        const resize = () => {
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+        };
+        resize();
+        window.addEventListener('resize', resize);
+
+        const ctx = canvas.getContext('2d');
+        if (!ctx) return;
+        const w = canvas.width;
+        const h = canvas.height;
+
+        let animId: number;
+
+        const render = () => {
+            // Base fill (AMap style light background)
+            ctx.fillStyle = '#f2efe9';
+            ctx.fillRect(0, 0, w, h);
+
+            // 1. Draw Park (Green Area)
+            ctx.fillStyle = '#dcecd6';
+            ctx.beginPath();
+            ctx.moveTo(w * 0.1, h * 0.2);
+            ctx.bezierCurveTo(w * 0.3, h * 0.1, w * 0.4, h * 0.4, w * 0.2, h * 0.6);
+            ctx.bezierCurveTo(w * 0.05, h * 0.5, w * 0.0, h * 0.3, w * 0.1, h * 0.2);
+            ctx.fill();
+
+            ctx.beginPath();
+            ctx.moveTo(w * 0.7, h * 0.6);
+            ctx.bezierCurveTo(w * 0.9, h * 0.5, w + 50, h * 0.8, w * 0.8, h + 50);
+            ctx.bezierCurveTo(w * 0.6, h * 0.9, w * 0.5, h * 0.7, w * 0.7, h * 0.6);
+            ctx.fill();
+
+            // 2. Draw River
+            ctx.lineWidth = 30;
+            ctx.strokeStyle = '#b3d1ff';
+            ctx.lineCap = 'round';
+            ctx.lineJoin = 'round';
+            ctx.beginPath();
+            ctx.moveTo(-50, h * 0.7);
+            ctx.bezierCurveTo(w * 0.3, h * 0.8, w * 0.6, h * 0.4, w + 50, h * 0.3);
+            ctx.stroke();
+
+            // 3. Draw Main Roads (Arterial - Yellow/White)
+            const drawRoad = (x1: number, y1: number, x2: number, y2: number, cx: number, cy: number, width: number, color: string, outline: string) => {
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.quadraticCurveTo(cx, cy, x2, y2);
+                ctx.lineWidth = width + 2;
+                ctx.strokeStyle = outline;
+                ctx.stroke();
+
+                ctx.beginPath();
+                ctx.moveTo(x1, y1);
+                ctx.quadraticCurveTo(cx, cy, x2, y2);
+                ctx.lineWidth = width;
+                ctx.strokeStyle = color;
+                ctx.stroke();
+            };
+
+            // Main Highway
+            drawRoad(-50, h * 0.2, w + 50, h * 0.9, w * 0.5, h * 0.4, 14, '#ffe292', '#e2c575');
+            // Secondary Road
+            drawRoad(w * 0.7, -50, w * 0.4, h + 50, w * 0.8, h * 0.5, 10, '#ffffff', '#e0e0e0');
+            // Tertiary Road
+            drawRoad(-50, h * 0.5, w * 0.8, -50, w * 0.2, h * 0.2, 8, '#ffffff', '#e0e0e0');
+            drawRoad(w * 0.2, h + 50, w + 50, h * 0.6, w * 0.6, h * 0.8, 8, '#ffffff', '#e0e0e0');
+
+            // Draw subtle POI tint based on currentLocId
+            if (currentLocId === 'gugong') {
+                ctx.fillStyle = 'rgba(217, 119, 119, 0.03)';
+                ctx.fillRect(0, 0, w, h);
+            }
+
+            animId = requestAnimationFrame(render);
+        };
+
+        render();
+        return () => {
+            cancelAnimationFrame(animId);
+            window.removeEventListener('resize', resize);
+        };
+    }, [currentLocId]);
+
+    return (
+        <div ref={containerRef} className="absolute inset-0 overflow-hidden bg-[#f2efe9] touch-none">
+            {/* Inner wrapper for semantic panning/zooming */}
+            <div
+                ref={mapWrapperRef}
+                className="absolute inset-0 w-full h-full cursor-grab active:cursor-grabbing origin-center"
+                style={{ transform: `translate(${mapTransform.x}px, ${mapTransform.y}px) scale(${mapTransform.scale})` }}
+                onWheel={handleWheel}
+                onPointerDown={handlePointerDown}
+                onPointerMove={handlePointerMove}
+                onPointerUp={handlePointerUp}
+                onPointerCancel={handlePointerUp}
+            >
+                <canvas ref={canvasRef} className="absolute inset-0"></canvas>
+
+                {/* POI Markers */}
+                <div className="absolute inset-0 z-10 pointer-events-none">
+                    {poiData.map((poi: any) => (
+                        <div
+                            key={poi.id}
+                            className="absolute -translate-x-1/2 -translate-y-1/2 flex flex-col items-center cursor-pointer group pointer-events-auto"
+                            style={{ left: `${poi.position.x * 100}%`, top: `${poi.position.y * 100}%` }}
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onClick={(e) => {
+                                e.stopPropagation();
+                                setUserPos(poi.position);
+                                const msgId = `bot-poi-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+                                addMessage({ id: msgId, sender: 'bot', text: '' });
+                                triggerTTS(msgId, poi.narration.replace(/哦|呢|啦/g, ''), poi.image, poi.images);
+                            }}
+                        >
+                            <div className="w-8 h-8 rounded-full bg-white shadow-md flex items-center justify-center text-lg mb-1 group-hover:scale-110 transition-transform">
+                                {poi.icon}
+                            </div>
+                            <div className="text-[10px] text-gray-700 font-medium bg-white/60 px-1 rounded backdrop-blur-sm">
+                                {poi.name}
+                            </div>
+                        </div>
+                    ))}
+
+                    {/* User Location Node */}
+                    <div
+                        className="absolute w-3 h-3 bg-green-500 rounded-full shadow-[0_0_10px_rgba(34,197,94,0.6)] -translate-x-1/2 -translate-y-1/2 transition-all duration-1000 ease-out z-20"
+                        style={{ left: `${userPos.x * 100}%`, top: `${userPos.y * 100}%` }}
+                    >
+                        <div className="absolute inset-[-6px] rounded-full border border-green-400 animate-ping opacity-75"></div>
+                    </div>
+                </div>
+            </div>
         </div>
     );
 }

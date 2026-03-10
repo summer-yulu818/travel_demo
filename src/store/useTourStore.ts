@@ -40,6 +40,7 @@ interface TourState {
     messages: Message[];
     debugLogs: DebugLog[];
     showDebugPanel: boolean;
+    useAMap: boolean;
     currentTTS: { id: string; text: string; imageUrl?: string; images?: string[] } | null;
 
     // Actions
@@ -52,6 +53,7 @@ interface TourState {
     setVisionActive: (active: boolean) => void;
     setEnableCloudVision: (enable: boolean) => void;
     setEnablePosSimulation: (enable: boolean) => void;
+    setUseAMap: (enable: boolean) => void;
     setSimulatedPos: (pos: { lng: number; lat: number } | null) => void;
     setMapZoom: (zoom: number) => void;
     setGfMsgIndex: (idx: number) => void;
@@ -108,6 +110,7 @@ export const useTourStore = create<TourState>((set, get) => ({
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
     debugLogs: [],
     showDebugPanel: true,
+    useAMap: false,
     currentTTS: null,
 
     setLocId: async (id) => {
@@ -162,6 +165,7 @@ export const useTourStore = create<TourState>((set, get) => ({
     setVisionActive: (active) => set({ isVisionActive: active }),
     setEnableCloudVision: (enable) => set({ enableCloudVision: enable }),
     setEnablePosSimulation: (enable) => set({ enablePosSimulation: enable }),
+    setUseAMap: (enable) => set({ useAMap: enable }),
     setSimulatedPos: (pos) => set({ simulatedPos: pos }),
     setMapZoom: (zoom) => set({ mapZoom: zoom }),
     setGfMsgIndex: (idx) => set({ gfMsgIndex: idx }),

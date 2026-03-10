@@ -8,6 +8,7 @@ export default function TopBar() {
         isVisionActive, setVisionActive,
         enablePosSimulation, setEnablePosSimulation,
         enableCloudVision, setEnableCloudVision,
+        useAMap, setUseAMap,
         mapZoom, setMapZoom
     } = useTourStore();
 
@@ -81,6 +82,18 @@ export default function TopBar() {
                     {/* Settings Dropdown */}
                     {showSettings && (
                         <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex flex-col gap-3 font-normal text-gray-700 z-50">
+                            <label className="flex items-center justify-between cursor-pointer">
+                                <span>使用高德地图</span>
+                                <div className="relative inline-block w-8 h-4">
+                                    <input
+                                        type="checkbox"
+                                        className="peer sr-only"
+                                        checked={useAMap}
+                                        onChange={() => setUseAMap(!useAMap)}
+                                    />
+                                    <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
+                                </div>
+                            </label>
                             <label className="flex items-center justify-between cursor-pointer">
                                 <span>启用坐标模拟</span>
                                 <div className="relative inline-block w-8 h-4">

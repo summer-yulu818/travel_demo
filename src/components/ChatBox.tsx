@@ -107,19 +107,14 @@ export default function ChatBox() {
     };
 
     const llmBotReply = async (userText: string) => {
-        const id = `msg-${Date.now()}`;
+        const id = `bot-reply-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         addMessage({ id, sender: 'bot', text: '', isTyping: true });
         setAvatarTalking(true);
         setIsTypingObj(id);
         isTypingObjRef.current = id;
 
         const activePois = currentLoc.poiData?.map((p: any) => p.name).join('、') || '暂无';
-        const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。
-你的名字叫小溪（如果是故宫叫小故，黄山叫小黄，蚂蚁空间叫小游）。
-当前景区内有效的景点列表为：【${activePois}】。
-请仅针对上述有效景点进行介绍和回答。如果用户问及不在列表中的景点，请礼貌地告知该景点当前不可见或不属于本次导览范围。
-请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
-
+        const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
         const history: ChatMessage[] = messages.slice(-4).map(m => ({
             role: m.sender === 'user' ? 'user' : 'assistant',
             content: m.text
@@ -162,7 +157,7 @@ export default function ChatBox() {
     const handleSend = () => {
         if (!inputText.trim() || avatarPaused === false) return;
         const txt = inputText.trim();
-        addMessage({ id: `msg-${Date.now()}`, sender: 'user', text: txt });
+        addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt });
         setInputText('');
         llmBotReply(txt);
     };
@@ -174,7 +169,7 @@ export default function ChatBox() {
         };
         const txt = txtMap[key];
         const scenicName = currentLoc?.scenicArea?.name || '景区';
-        addMessage({ id: `msg-${Date.now()}`, sender: 'user', text: `请给我一些关于【${scenicName}】的${txt}。` });
+        addMessage({ id: `user-quick-${Date.now()}`, sender: 'user', text: `请给我一些关于【${scenicName}】的${txt}。` });
         llmBotReply(`请给我一些关于【${scenicName}】的${txt}。`);
     };
 
