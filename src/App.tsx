@@ -11,6 +11,7 @@ export default function App() {
     const { currentLocId, currentLoc, avatarPaused, setAvatarPaused, setUserPos, addMessage, triggerTTS, setCameraActive } = useTourStore();
     const tourRef = useRef<boolean>(false);
     const lockRef = useRef<boolean>(false);
+    const welcomeSentRef = useRef<string>(''); // Guard against StrictMode double-fire
 
     useEffect(() => {
         const timer = setTimeout(() => setShowSplash(false), 2000);
@@ -20,6 +21,11 @@ export default function App() {
     // 手动导览监控器（启动模式时提示点击）
     useEffect(() => {
         if (avatarPaused || !currentLoc.poiData) return;
+
+        // Prevent duplicate welcome messages (React StrictMode double-fire)
+        const welcomeKey = `${avatarPaused}-${currentLocId}`;
+        if (welcomeSentRef.current === welcomeKey) return;
+        welcomeSentRef.current = welcomeKey;
 
         // Auto-enable camera when the tour is unpaused and active
         setCameraActive(true);
