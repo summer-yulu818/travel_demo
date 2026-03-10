@@ -32,6 +32,9 @@ interface TourState {
     cameraActive: boolean;
     isVisionActive: boolean;
     enableCloudVision: boolean;
+    enablePosSimulation: boolean;
+    simulatedPos: { lng: number; lat: number } | null;
+    mapZoom: number;
     gfMsgIndex: number;
     steps: number;
     messages: Message[];
@@ -48,6 +51,9 @@ interface TourState {
     setCameraActive: (active: boolean) => void;
     setVisionActive: (active: boolean) => void;
     setEnableCloudVision: (enable: boolean) => void;
+    setEnablePosSimulation: (enable: boolean) => void;
+    setSimulatedPos: (pos: { lng: number; lat: number } | null) => void;
+    setMapZoom: (zoom: number) => void;
     setGfMsgIndex: (idx: number) => void;
     incrementSteps: (val: number) => void;
     addMessage: (msg: Message) => void;
@@ -94,6 +100,9 @@ export const useTourStore = create<TourState>((set, get) => ({
     cameraActive: false,
     isVisionActive: false,
     enableCloudVision: false,
+    enablePosSimulation: true,
+    simulatedPos: null,
+    mapZoom: 14,
     gfMsgIndex: 0,
     steps: 0,
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
@@ -108,9 +117,11 @@ export const useTourStore = create<TourState>((set, get) => ({
         // 1. Check static
         if (staticLocations[id]) {
             const loc = staticLocations[id];
+            const firstPoi = loc.poiData[0];
             set({
                 currentLoc: loc,
-                userPos: loc.poiData[0]?.position || { x: 0.5, y: 0.5 }
+                userPos: firstPoi?.position || { x: 0.5, y: 0.5 },
+                simulatedPos: firstPoi && firstPoi.lng ? { lng: firstPoi.lng, lat: firstPoi.lat } : null
             });
             return;
         }
@@ -119,9 +130,11 @@ export const useTourStore = create<TourState>((set, get) => ({
         const { dynamicLocations } = get();
         if (dynamicLocations[id]) {
             const loc = dynamicLocations[id];
+            const firstPoi = loc.poiData[0];
             set({
                 currentLoc: loc,
-                userPos: loc.poiData[0]?.position || { x: 0.5, y: 0.5 }
+                userPos: firstPoi?.position || { x: 0.5, y: 0.5 },
+                simulatedPos: firstPoi && firstPoi.lng ? { lng: firstPoi.lng, lat: firstPoi.lat } : null
             });
             return;
         }
@@ -130,10 +143,12 @@ export const useTourStore = create<TourState>((set, get) => ({
         const locData = await fetchScenicData(id);
         if (locData) {
             (locData as any).walkPath = buildPath(locData.poiData);
+            const firstPoi = locData.poiData[0];
             set((state) => ({
                 currentLoc: locData,
                 dynamicLocations: { ...state.dynamicLocations, [id]: locData },
-                userPos: locData.poiData[0]?.position || { x: 0.5, y: 0.5 }
+                userPos: firstPoi?.position || { x: 0.5, y: 0.5 },
+                simulatedPos: firstPoi && firstPoi.lng ? { lng: firstPoi.lng, lat: firstPoi.lat } : null
             }));
         } else {
             console.error(`Failed to load location: ${id}`);
@@ -146,6 +161,9 @@ export const useTourStore = create<TourState>((set, get) => ({
     setCameraActive: (active) => set({ cameraActive: active }),
     setVisionActive: (active) => set({ isVisionActive: active }),
     setEnableCloudVision: (enable) => set({ enableCloudVision: enable }),
+    setEnablePosSimulation: (enable) => set({ enablePosSimulation: enable }),
+    setSimulatedPos: (pos) => set({ simulatedPos: pos }),
+    setMapZoom: (zoom) => set({ mapZoom: zoom }),
     setGfMsgIndex: (idx) => set({ gfMsgIndex: idx }),
     incrementSteps: (val) => set((state) => ({ steps: state.steps + val })),
     addMessage: (msg) => set((state) => ({ messages: [...state.messages, msg] })),

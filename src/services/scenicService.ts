@@ -4,7 +4,9 @@ export interface POIData {
     id: string;
     name: string;
     icon: string;
-    position: { x: number; y: number };
+    position: { x: number; y: number }; // Relative position for visual layout
+    lng: number; // Real longitude for AMap
+    lat: number; // Real latitude for AMap
     distance: string;
     narration: string;
     image: string;
@@ -103,6 +105,8 @@ export const fetchScenicData = async (scenicId: string): Promise<ScenicLocation 
                 name: a.name,
                 icon: '📍',
                 position: { x, y },
+                lng: a.longitude,
+                lat: a.latitude,
                 distance: '100m',
                 narration: a.description || `这是${a.name}，一个非常值得一游的地方。`,
                 image: attractionImages[0] || '/xiaohuang_avatar.png',

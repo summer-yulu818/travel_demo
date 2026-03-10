@@ -53,7 +53,7 @@ export default function AvatarWidget() {
     }, [pos.x, pos.y]);
 
     // 头像样式与动画
-    const containerClass = `absolute z-50 flex flex-col items-center justify-center transition-opacity duration-300 w-[90px] h-[90px] touch-none select-none`;
+    const containerClass = `absolute z-[999] flex flex-col items-center justify-center transition-opacity duration-300 w-[90px] h-[90px] touch-none select-none`;
     const ringClass = `absolute inset-0 rounded-full border-2 ${avatarPaused ? 'border-gray-300' : 'border-blue-400 rotate-ring'}`;
     const statusLabel = avatarPaused ? '已暂停' : '数字人导览中';
 
@@ -61,7 +61,7 @@ export default function AvatarWidget() {
         <div
             ref={floatRef}
             className={containerClass}
-            style={{ left: pos.x, top: pos.y, cursor: 'grab' }}
+            style={{ left: pos.x, top: pos.y, cursor: 'grab', pointerEvents: 'auto' }}
         >
             {/* 操作按钮 */}
             <button

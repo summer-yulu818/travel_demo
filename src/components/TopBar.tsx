@@ -1,10 +1,19 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useTourStore } from '../store/useTourStore';
-import { Camera } from 'lucide-react';
+import { Camera, Settings } from 'lucide-react';
 
 export default function TopBar() {
-    const { currentLocId, currentLoc, setLocId, isVisionActive, setVisionActive } = useTourStore();
+    const {
+        currentLocId, currentLoc, setLocId,
+        isVisionActive, setVisionActive,
+        enablePosSimulation, setEnablePosSimulation,
+        enableCloudVision, setEnableCloudVision,
+        mapZoom, setMapZoom
+    } = useTourStore();
+
     const [timeStr, setTimeStr] = useState('');
+    const [showSettings, setShowSettings] = useState(false);
+    const settingsRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         const updateTime = () => {
@@ -14,6 +23,17 @@ export default function TopBar() {
         updateTime();
         const iv = setInterval(updateTime, 30000);
         return () => clearInterval(iv);
+    }, []);
+
+    // Close settings if clicked outside
+    useEffect(() => {
+        const handleClickOutside = (event: MouseEvent) => {
+            if (settingsRef.current && !settingsRef.current.contains(event.target as Node)) {
+                setShowSettings(false);
+            }
+        };
+        document.addEventListener('mousedown', handleClickOutside);
+        return () => document.removeEventListener('mousedown', handleClickOutside);
     }, []);
 
     return (
@@ -37,7 +57,14 @@ export default function TopBar() {
                         <option value="antspace">蚂蚁空间</option>
                     </select>
                 </div>
-                <div className="flex items-center space-x-2 text-gray-500 text-[11px]">
+                <div className="flex items-center space-x-2 text-gray-500 text-[11px] relative" ref={settingsRef}>
+                    <button
+                        onClick={() => setShowSettings(!showSettings)}
+                        className={`p-1.5 rounded-full transition-colors shadow-sm ${showSettings ? 'bg-gray-200 text-gray-700' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
+                        title="设置"
+                    >
+                        <Settings size={14} />
+                    </button>
                     <button
                         onClick={() => setVisionActive(!isVisionActive)}
                         className={`p-1.5 rounded-full transition-colors shadow-sm ${isVisionActive ? 'bg-green-100 text-green-600' : 'bg-gray-100 text-gray-500 hover:bg-gray-200'}`}
@@ -50,6 +77,51 @@ export default function TopBar() {
                         <div className="h-full bg-green-500 rounded-[1px] w-[80%]"></div>
                         <div className="absolute right-[-3px] top-1/2 -translate-y-1/2 w-[2px] h-[4px] bg-gray-400 rounded-r-sm"></div>
                     </div>
+
+                    {/* Settings Dropdown */}
+                    {showSettings && (
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex flex-col gap-3 font-normal text-gray-700 z-50">
+                            <label className="flex items-center justify-between cursor-pointer">
+                                <span>启用坐标模拟</span>
+                                <div className="relative inline-block w-8 h-4">
+                                    <input
+                                        type="checkbox"
+                                        className="peer sr-only"
+                                        checked={enablePosSimulation}
+                                        onChange={() => setEnablePosSimulation(!enablePosSimulation)}
+                                    />
+                                    <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
+                                </div>
+                            </label>
+                            <label className="flex items-center justify-between cursor-pointer">
+                                <span>使用云端图像识别</span>
+                                <div className="relative inline-block w-8 h-4">
+                                    <input
+                                        type="checkbox"
+                                        className="peer sr-only"
+                                        checked={enableCloudVision}
+                                        onChange={() => setEnableCloudVision(!enableCloudVision)}
+                                    />
+                                    <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
+                                </div>
+                            </label>
+                            <div className="flex flex-col gap-1.5 pt-1 border-t border-gray-100/50">
+                                <div className="flex justify-between items-center text-[11px] text-gray-500 font-medium">
+                                    <span>地图比例尺 (Zoom)</span>
+                                    <span className="bg-gray-100 px-1.5 py-0.5 rounded text-gray-700">{mapZoom}</span>
+                                </div>
+                                <input
+                                    type="range"
+                                    min="3"
+                                    max="20"
+                                    step="1"
+                                    value={mapZoom}
+                                    onChange={(e) => setMapZoom(Number(e.target.value))}
+                                    className="w-full h-1 bg-gray-200 rounded-lg appearance-none cursor-pointer accent-blue-500"
+                                />
+                            </div>
+                        </div>
+                    )}
                 </div>
             </div>
 
