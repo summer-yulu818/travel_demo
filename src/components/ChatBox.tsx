@@ -3,7 +3,7 @@ import { useTourStore, Message } from '../store/useTourStore';
 import { streamChat, analyzeImage, ChatMessage } from '../services/llm';
 
 export default function ChatBox() {
-    const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, setAvatarTalking, pendingImage, setPendingImage } = useTourStore();
+    const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, addDebugLog, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, setAvatarTalking, pendingImage, setPendingImage } = useTourStore();
     const msgsRef = useRef<HTMLDivElement>(null);
     const debugMsgsRef = useRef<HTMLDivElement>(null);
     const [inputText, setInputText] = useState('');
@@ -155,17 +155,60 @@ export default function ChatBox() {
     };
 
     const handleSend = () => {
-        if ((!inputText.trim() && !pendingImage) || avatarPaused === false) return;
-        const txt = inputText.trim() || (pendingImage ? '帮我看看这张照片' : '');
-        const imageToSend = pendingImage;
+        const hasText = inputText.trim().length > 0;
+        let imageToSend = pendingImage;
+        const hasImage = !!pendingImage;
+        
+        // If camera is active and user didn't manually snap a photo, auto-capture one
+        if (cameraActive && !hasImage) {
+            const videoEl = document.getElementById('tour-camera-video') as HTMLVideoElement;
+            if (videoEl && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
+                const canvas = document.createElement('canvas');
+                const MAX_SIZE = 512;
+                let scale = 1;
+                if (videoEl.videoWidth > MAX_SIZE || videoEl.videoHeight > MAX_SIZE) {
+                    scale = Math.min(MAX_SIZE / videoEl.videoWidth, MAX_SIZE / videoEl.videoHeight);
+                }
+                canvas.width = videoEl.videoWidth * scale;
+                canvas.height = videoEl.videoHeight * scale;
+                const ctx = canvas.getContext('2d');
+                if (ctx) {
+                    ctx.drawImage(videoEl, 0, 0, canvas.width, canvas.height);
+                    imageToSend = canvas.toDataURL('image/jpeg', 0.6);
+                }
+            } else {
+                 // Fallback for mock environment
+                 const canvas = document.createElement('canvas');
+                 canvas.width = 256; canvas.height = 256;
+                 const ctx = canvas.getContext('2d');
+                 if(ctx) {
+                      ctx.fillStyle = '#0f172a';
+                      ctx.fillRect(0, 0, canvas.width, canvas.height);
+                      ctx.fillStyle = '#f8fafc';
+                      ctx.font = '20px sans-serif';
+                      ctx.fillText('电脑模拟器无摄像头', 20, 100);
+                      imageToSend = canvas.toDataURL('image/jpeg', 0.6);
+                 }
+            }
+        }
 
+        // Must have at least text or image to send
+        if (!hasText && !imageToSend) return;
+
+        const txt = hasText ? inputText.trim() : '帮我看看这张照片';
+        // Only send image if user has explicitly attached one (pendingImage) OR auto-captured AND typed no text,
+        // OR if they typed text AND have a pending/auto image — both cases use vision reply
+        
         addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt, imageUrl: imageToSend || undefined });
         setInputText('');
         setPendingImage(null);
+        if (cameraActive) setCameraActive(false);
 
         if (imageToSend) {
+            // Image attached: use vision model
             visionBotReply(txt, imageToSend);
         } else {
+            // Text only: use regular LLM
             llmBotReply(txt);
         }
     };
@@ -178,18 +221,25 @@ export default function ChatBox() {
         try {
             const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
             const prompt = `${systemPrompt}\n游客拍了一张照片并说：「${userText}」。请根据照片内容和用户的文字来回答。如果用户只是说"帮我看看"，就识别照片里的物体或风景并介绍。评价简短精要。`;
+            addDebugLog('vision', `发起图片识别，base64长度=${base64Img.length}`);
             const reply = await analyzeImage(base64Img, prompt);
+            addDebugLog('vision', `识别成功: ${reply.substring(0, 80)}`);
             updateMessage(botMsgId, { text: reply, isTyping: false });
-        } catch (e) {
-            console.error(e);
-            updateMessage(botMsgId, { text: '哎呀，可能因为网络原因，我没看清这张照片。', isTyping: false });
+        } catch (e: any) {
+            const errMsg = e?.message || String(e);
+            console.error('Vision Error:', e);
+            addDebugLog('vision-error', `识别失败: ${errMsg}`);
+            // Fallback to text-only LLM reply so user still gets a response
+            const fallbackMsg = `抱歉，图片识别暂时不可用（${errMsg}）`;
+            updateMessage(botMsgId, { text: fallbackMsg, isTyping: false });
+            // Trigger LLM as fallback
+            llmBotReply(userText);
         } finally {
             setAvatarTalking(false);
         }
     };
 
     const triggerQuickWord = (key: 'route' | 'history' | 'food' | 'photo') => {
-        if (!avatarPaused) return;
         const txtMap = {
             route: '推荐路线', history: '历史故事', food: '美食推荐', photo: '拍照攻略'
         };
@@ -273,8 +323,11 @@ export default function ChatBox() {
                             </div>
                         ) : (
                             /* User Message Bubble */
-                            <div className="max-w-[75%] bg-[#ebf3ff] text-[#222222] border border-[#d6e7ff] rounded-2xl rounded-tr-md px-4 py-2.5 text-[15px] leading-relaxed relative animate-in fade-in duration-300">
-                                {m.text}
+                            <div className="max-w-[75%] bg-[#ebf3ff] text-[#222222] border border-[#d6e7ff] rounded-2xl rounded-tr-md px-4 py-2.5 text-[15px] leading-relaxed relative animate-in fade-in duration-300 flex flex-col gap-2">
+                                {m.imageUrl && (
+                                    <img src={m.imageUrl} alt="User attachment" className="w-full h-auto max-h-48 object-cover rounded-lg border border-[#d6e7ff]" />
+                                )}
+                                <span>{m.text}</span>
                             </div>
                         )}
                     </div>
@@ -301,34 +354,35 @@ export default function ChatBox() {
                 </button>
             </div>
 
-            {/* 底部输入区 */}
-            <div className="bg-transparent px-4 pb-4 pt-2 shrink-0">
-                <div className="flex items-center space-x-2">
+            {/* 底部输入区及悬浮图片预览 */}
+            <div className="relative bg-transparent shrink-0 flex flex-col pt-2 w-full">
+                {/* 悬浮的待发送图片预览 */}
+                {pendingImage && (
+                    <div className="absolute bottom-[calc(100%+8px)] left-4 z-10 bg-white p-2 rounded-2xl shadow-[0_4px_20px_rgba(0,0,0,0.1)] border border-gray-100 animate-in slide-in-from-bottom-2 fade-in duration-200">
+                        <div className="relative">
+                            <img src={pendingImage} alt="pending" className="h-24 w-auto object-contain rounded-xl" />
+                            <button
+                                onClick={() => setPendingImage(null)}
+                                className="absolute -top-3 -right-3 w-6 h-6 bg-gray-500/80 text-white rounded-full flex items-center justify-center text-[10px] shadow-sm hover:bg-gray-600 transition-colors backdrop-blur-sm"
+                            >
+                                ✕
+                            </button>
+                        </div>
+                    </div>
+                )}
+
+                <div className="px-4 pb-4 flex items-center space-x-2 w-full">
                     {/* Voice Button */}
-                    <button type="button" className="w-10 h-10 flex items-center justify-center shrink-0 bg-gray-100 text-gray-700 rounded-full active:bg-gray-200 transition-colors disabled:opacity-40" disabled={!avatarPaused}>
+                    <button type="button" className="w-10 h-10 flex items-center justify-center shrink-0 bg-gray-100 text-gray-700 rounded-full active:bg-gray-200 transition-colors">
                         <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
                             <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
                         </svg>
                     </button>
 
-                    <div className="flex-1 relative">
-                        {pendingImage && (
-                            <div className="absolute -top-16 left-0 right-0 px-1">
-                                <div className="relative inline-block">
-                                    <img src={pendingImage} alt="pending" className="h-12 w-auto rounded-lg border border-gray-200 shadow-sm" />
-                                    <button
-                                        onClick={() => setPendingImage(null)}
-                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs shadow-sm hover:bg-red-600 transition-colors"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            </div>
-                        )}
+                    <div className="flex-1">
                         <input
                             type="text"
-                            placeholder={pendingImage ? "输入你的问题，一起发送..." : (avatarPaused ? "问我关于这里的一切..." : "数字人导览中，已锁定输入...")}
-                            disabled={!avatarPaused}
+                            placeholder={pendingImage ? "输入你的问题，一起发送..." : "问我关于这里的一切..."}
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
                             onKeyDown={(e) => e.key === 'Enter' && handleSend()}
@@ -340,9 +394,8 @@ export default function ChatBox() {
                     {(inputText || pendingImage) ? (
                         <button
                             type="button"
-                            disabled={!avatarPaused}
                             onClick={handleSend}
-                            className="w-10 h-10 flex items-center justify-center rounded-full shrink-0 bg-blue-600 text-white shadow-sm active:scale-95 transition-all disabled:opacity-50"
+                            className="w-10 h-10 flex items-center justify-center rounded-full shrink-0 bg-blue-600 text-white shadow-sm active:scale-95 transition-all"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 -ml-0.5">
                                 <path strokeLinecap="round" strokeLinejoin="round" d="M6 12 3.269 3.125A59.769 59.769 0 0 1 21.485 12 59.768 59.768 0 0 1 3.27 20.875L5.999 12Zm0 0h7.5" />

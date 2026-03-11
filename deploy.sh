@@ -29,6 +29,15 @@ if [ ! -f ".env" ]; then
     fi
 fi
 
+echo "🔐 Checking Firebase login status..."
+CURRENT_USER=$(npx firebase login:list | grep "Logged in as" | awk '{print $4}')
+if [ -z "$CURRENT_USER" ]; then
+    echo "❌ Error: Not logged into Firebase. Please run 'npx firebase login' first."
+    exit 1
+fi
+echo "✅ Logged in as: $CURRENT_USER"
+echo "💡 If this is not the correct account, please run 'npx firebase logout' and 'npx firebase login'."
+
 echo "🧹 Cleaning up old build artifacts..."
 rm -rf dist
 
@@ -36,6 +45,6 @@ echo "🏗️ Building the application..."
 npm run build
 
 echo "🚀 Deploying to Firebase Hosting..."
-npx firebase-tools deploy --only hosting --project traveldemo-64ab2
+npx firebase deploy --only hosting --project scenicagent-d50e3
 
 echo "✨ Deployment finished successfully!"

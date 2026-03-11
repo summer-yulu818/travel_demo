@@ -111,7 +111,7 @@ export const useTourStore = create<TourState>((set, get) => ({
     steps: 0,
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
     debugLogs: [],
-    showDebugPanel: false,
+    showDebugPanel: true,
     useAMap: false,
     pendingImage: null,
     currentTTS: null,

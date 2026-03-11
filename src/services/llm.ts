@@ -98,9 +98,12 @@ export async function analyzeImage(base64Image: string, prompt: string): Promise
         throw new Error('未配置大模型 API Key');
     }
 
-    const VL_API_URL = '/api/dashscope/api/v1/services/aigc/multimodal-generation/generation';
+    // Use the same OpenAI-compatible endpoint as streamChat — no proxy needed
+    const imageUrl = base64Image.startsWith('data:')
+        ? base64Image
+        : `data:image/jpeg;base64,${base64Image}`;
 
-    const response = await fetch(VL_API_URL, {
+    const response = await fetch(API_URL, {
         method: 'POST',
         headers: {
             'Content-Type': 'application/json',
@@ -108,17 +111,16 @@ export async function analyzeImage(base64Image: string, prompt: string): Promise
         },
         body: JSON.stringify({
             model: 'qwen-vl-plus',
-            input: {
-                messages: [
-                    {
-                        role: 'user',
-                        content: [
-                            { image: base64Image }, // 原生协议直接以 image 为键
-                            { text: prompt }
-                        ]
-                    }
-                ]
-            }
+            messages: [
+                {
+                    role: 'user',
+                    content: [
+                        { type: 'image_url', image_url: { url: imageUrl } },
+                        { type: 'text', text: prompt }
+                    ]
+                }
+            ],
+            stream: false,
         })
     });
 
@@ -128,5 +130,6 @@ export async function analyzeImage(base64Image: string, prompt: string): Promise
     }
 
     const data = await response.json();
-    return data.output?.choices?.[0]?.message?.content?.[0]?.text || '我无法识别此照片。';
+    return data.choices?.[0]?.message?.content || '我无法识别此照片。';
 }
+
