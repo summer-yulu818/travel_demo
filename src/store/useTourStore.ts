@@ -42,6 +42,7 @@ interface TourState {
     showDebugPanel: boolean;
     useAMap: boolean;
     currentTTS: { id: string; text: string; imageUrl?: string; images?: string[] } | null;
+    pendingImage: string | null;
 
     // Actions
     setLocId: (id: string) => Promise<void>;
@@ -65,6 +66,7 @@ interface TourState {
     setShowDebugPanel: (show: boolean) => void;
     triggerTTS: (id: string, text: string, imageUrl?: string, images?: string[]) => void;
     clearTTS: () => void;
+    setPendingImage: (img: string | null) => void;
 }
 
 const buildPath = (points: any[]) => {
@@ -109,8 +111,9 @@ export const useTourStore = create<TourState>((set, get) => ({
     steps: 0,
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
     debugLogs: [],
-    showDebugPanel: true,
+    showDebugPanel: false,
     useAMap: false,
+    pendingImage: null,
     currentTTS: null,
 
     setLocId: async (id) => {
@@ -184,4 +187,5 @@ export const useTourStore = create<TourState>((set, get) => ({
     setShowDebugPanel: (show: boolean) => set({ showDebugPanel: show }),
     triggerTTS: (id, text, imageUrl, images) => set({ currentTTS: { id, text, imageUrl, images } }),
     clearTTS: () => set({ currentTTS: null }),
+    setPendingImage: (img) => set({ pendingImage: img }),
 }));

@@ -170,7 +170,6 @@ export default function CameraWidget() {
                         if (!ctx) return;
 
                         if (isMock) {
-                            // 渲染一张模拟图提供给大模型
                             ctx.fillStyle = '#0f172a';
                             ctx.fillRect(0, 0, canvas.width, canvas.height);
                             ctx.fillStyle = '#f8fafc';
@@ -186,32 +185,10 @@ export default function CameraWidget() {
 
                         const base64Img = canvas.toDataURL('image/jpeg', 0.6);
 
-                        // 2. 先把照片发入公屏
-                        const { addMessage, updateMessage, currentLoc, setCameraActive } = useTourStore.getState();
-                        setCameraActive(false); // 拍完关闭摄像头
-
-                        addMessage({ id: `msg-${Date.now()}-img`, sender: 'user', text: '帮你拍了张照，帮我看看！', imageUrl: base64Img });
-
-                        // 3. 产生一个加载等待气泡
-                        const botMsgId = `msg-${Date.now()}`;
-                        addMessage({ id: botMsgId, sender: 'bot', text: '让我看看你拍的画面...', isTyping: true });
-
-                        // 4. 调用视觉大模型
-                        import('../services/llm').then(async ({ analyzeImage }) => {
-                            try {
-                                const activePois = currentLoc.poiData?.map((p: any) => p.name).join('、') || '暂无';
-                                const currentLocId = currentLoc.scenicArea.id; // Assuming currentLocId is available or can be derived
-                                const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
-                                const prompt = `${systemPrompt}
-游客刚拍了一张照片给你看。请你用自然活泼、亲密导游的口语识别照片里的物体或风景。
-注意：如果识别结果属于上述有效景点列表，请详细介绍；如果不属于该列表（可能是已下架景点或无关物体），请不要将其识别为列表中的景点，而是如实描述并在必要时幽默调侃。评价简短（1-2句即可）。`;
-                                const reply = await analyzeImage(base64Img, prompt);
-                                updateMessage(botMsgId, { text: reply, isTyping: false });
-                            } catch (e) {
-                                console.error(e);
-                                updateMessage(botMsgId, { text: '哎呀，可能因为网络原因，我没看清这张照片。', isTyping: false });
-                            }
-                        });
+                        // 2. Store as pending image and close camera
+                        const { setPendingImage, setCameraActive } = useTourStore.getState();
+                        setPendingImage(base64Img);
+                        setCameraActive(false);
                     }}
                     className="snap-btn w-10 h-10 border-2 border-white rounded-full bg-white/30 backdrop-blur-sm transition-transform shadow-md"
                     disabled={isVisionActive && !cameraActive}

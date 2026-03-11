@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTourStore, Message } from '../store/useTourStore';
-import { streamChat, ChatMessage } from '../services/llm';
+import { streamChat, analyzeImage, ChatMessage } from '../services/llm';
 
 export default function ChatBox() {
-    const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, setAvatarTalking } = useTourStore();
+    const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, setAvatarTalking, pendingImage, setPendingImage } = useTourStore();
     const msgsRef = useRef<HTMLDivElement>(null);
     const debugMsgsRef = useRef<HTMLDivElement>(null);
     const [inputText, setInputText] = useState('');
@@ -155,11 +155,37 @@ export default function ChatBox() {
     };
 
     const handleSend = () => {
-        if (!inputText.trim() || avatarPaused === false) return;
-        const txt = inputText.trim();
-        addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt });
+        if ((!inputText.trim() && !pendingImage) || avatarPaused === false) return;
+        const txt = inputText.trim() || (pendingImage ? '帮我看看这张照片' : '');
+        const imageToSend = pendingImage;
+
+        addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt, imageUrl: imageToSend || undefined });
         setInputText('');
-        llmBotReply(txt);
+        setPendingImage(null);
+
+        if (imageToSend) {
+            visionBotReply(txt, imageToSend);
+        } else {
+            llmBotReply(txt);
+        }
+    };
+
+    const visionBotReply = async (userText: string, base64Img: string) => {
+        const botMsgId = `bot-vision-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+        addMessage({ id: botMsgId, sender: 'bot', text: '让我看看...', isTyping: true });
+        setAvatarTalking(true);
+
+        try {
+            const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
+            const prompt = `${systemPrompt}\n游客拍了一张照片并说：「${userText}」。请根据照片内容和用户的文字来回答。如果用户只是说"帮我看看"，就识别照片里的物体或风景并介绍。评价简短精要。`;
+            const reply = await analyzeImage(base64Img, prompt);
+            updateMessage(botMsgId, { text: reply, isTyping: false });
+        } catch (e) {
+            console.error(e);
+            updateMessage(botMsgId, { text: '哎呀，可能因为网络原因，我没看清这张照片。', isTyping: false });
+        } finally {
+            setAvatarTalking(false);
+        }
     };
 
     const triggerQuickWord = (key: 'route' | 'history' | 'food' | 'photo') => {
@@ -286,9 +312,22 @@ export default function ChatBox() {
                     </button>
 
                     <div className="flex-1 relative">
+                        {pendingImage && (
+                            <div className="absolute -top-16 left-0 right-0 px-1">
+                                <div className="relative inline-block">
+                                    <img src={pendingImage} alt="pending" className="h-12 w-auto rounded-lg border border-gray-200 shadow-sm" />
+                                    <button
+                                        onClick={() => setPendingImage(null)}
+                                        className="absolute -top-1.5 -right-1.5 w-5 h-5 bg-red-500 text-white rounded-full flex items-center justify-center text-xs shadow-sm hover:bg-red-600 transition-colors"
+                                    >
+                                        ✕
+                                    </button>
+                                </div>
+                            </div>
+                        )}
                         <input
                             type="text"
-                            placeholder={avatarPaused ? "问我关于这里的一切..." : "数字人导览中，已锁定输入..."}
+                            placeholder={pendingImage ? "输入你的问题，一起发送..." : (avatarPaused ? "问我关于这里的一切..." : "数字人导览中，已锁定输入...")}
                             disabled={!avatarPaused}
                             value={inputText}
                             onChange={(e) => setInputText(e.target.value)}
@@ -298,7 +337,7 @@ export default function ChatBox() {
                     </div>
 
                     {/* Camera Button / Send Button Cross-fade */}
-                    {inputText ? (
+                    {(inputText || pendingImage) ? (
                         <button
                             type="button"
                             disabled={!avatarPaused}
