@@ -185,10 +185,9 @@ export default function CameraWidget() {
 
                         const base64Img = canvas.toDataURL('image/jpeg', 0.6);
 
-                        // 2. Store as pending image and close camera
-                        const { setPendingImage, setCameraActive } = useTourStore.getState();
+                        // 2. Store as pending image (no auto close)
+                        const { setPendingImage } = useTourStore.getState();
                         setPendingImage(base64Img);
-                        setCameraActive(false);
                     }}
                     className="snap-btn w-10 h-10 border-2 border-white rounded-full bg-white/30 backdrop-blur-sm transition-transform shadow-md"
                     disabled={isVisionActive && !cameraActive}

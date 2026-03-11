@@ -111,14 +111,18 @@ export const useTourStore = create<TourState>((set, get) => ({
     steps: 0,
     messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }],
     debugLogs: [],
-    showDebugPanel: true,
+    showDebugPanel: false,
     useAMap: false,
     pendingImage: null,
     currentTTS: null,
 
     setLocId: async (id) => {
-        // Update ID immediately for responsive UI
-        set({ currentLocId: id });
+        // Update ID immediately for responsive UI, reset messages and disable generic TTS
+        set({
+            currentLocId: id,
+            currentTTS: null,
+            messages: [{ id: 'init', sender: 'bot', text: '欢迎来到AI伴游！我是您的专属智能导游。' }]
+        });
 
         // 1. Check static
         if (staticLocations[id]) {

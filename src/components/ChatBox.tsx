@@ -1,14 +1,35 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTourStore, Message } from '../store/useTourStore';
 import { streamChat, analyzeImage, ChatMessage } from '../services/llm';
+import { speakText, stopSpeaking } from '../services/tts';
 
 export default function ChatBox() {
-    const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, addDebugLog, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, setAvatarTalking, pendingImage, setPendingImage } = useTourStore();
+    const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, addDebugLog, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, avatarTalking, setAvatarTalking, pendingImage, setPendingImage } = useTourStore();
     const msgsRef = useRef<HTMLDivElement>(null);
     const debugMsgsRef = useRef<HTMLDivElement>(null);
     const [inputText, setInputText] = useState('');
     const [isTypingObj, setIsTypingObj] = useState<string | null>(null); // Current typing message ID
     const isTypingObjRef = useRef<string | null>(null);
+    const abortControllerRef = useRef<AbortController | null>(null);
+    const recognitionRef = useRef<any>(null);
+    const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
+    const [isRecording, setIsRecording] = useState(false);
+
+    const abortCurrentReply = () => {
+        if (abortControllerRef.current) {
+            abortControllerRef.current.abort();
+            abortControllerRef.current = null;
+        }
+        stopSpeaking();
+        
+        const currentMsgId = isTypingObjRef.current;
+        if (currentMsgId) {
+            updateMessage(currentMsgId, { isTyping: false });
+            setIsTypingObj(null);
+            isTypingObjRef.current = null;
+        }
+        setAvatarTalking(false);
+    };
 
     // Auto scroll
     useEffect(() => {
@@ -44,8 +65,63 @@ export default function ChatBox() {
         }
     }, [currentTTS]);
 
+    // Initialize Speech Recognition
+    useEffect(() => {
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            const recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN';
+            recognition.interimResults = false;
+            recognition.maxAlternatives = 1;
+
+            recognition.onresult = (event: any) => {
+                const transcript = event.results[0][0].transcript;
+                if (transcript) {
+                    setInputText(transcript);
+                    // Pass it manually into handleSend because state update is async
+                    handleSend(transcript);
+                }
+            };
+
+            recognition.onerror = (event: any) => {
+                console.error('Speech recognition error', event.error);
+                setIsRecording(false);
+            };
+
+            recognition.onend = () => {
+                setIsRecording(false);
+            };
+
+            recognitionRef.current = recognition;
+        }
+    }, [pendingImage, cameraActive]); // Re-bind if dependencies that handleSend uses change (though we pass text directly now)
+
+    const startRecording = (e: React.SyntheticEvent) => {
+        e.preventDefault();
+        abortCurrentReply();
+        if (recognitionRef.current) {
+            try {
+                recognitionRef.current.start();
+                setIsRecording(true);
+            } catch (err) {
+                console.error('ASR start error:', err);
+            }
+        } else {
+            console.warn('当前浏览器不支持语音识别API');
+            addDebugLog('vision-error', '当前浏览器不支持语音识别API');
+        }
+    };
+
+    const stopRecording = (e: React.SyntheticEvent) => {
+        e.preventDefault();
+        if (recognitionRef.current && isRecording) {
+            recognitionRef.current.stop();
+            setIsRecording(false);
+        }
+    };
+
     const speakAndType = (msgId: string, fullText: string, imageUrl?: string, images?: string[]) => {
-        window.speechSynthesis.cancel();
+        abortCurrentReply();
 
         // 1. 文字打字机渲染
         let charIdx = 0;
@@ -70,43 +146,26 @@ export default function ChatBox() {
                 setIsTypingObj(null);
                 isTypingObjRef.current = null;
                 updateMessage(msgId, { isTyping: false });
-                setAvatarTalking(false);
                 if (imageUrl) updateMessage(msgId, { imageUrl });
                 if (images) updateMessage(msgId, { images });
             }
         }, 60); // Faster for natural feel
 
         // 2. 异步处理 TTS 语音，不阻塞文字 UI
-        const utter = new SpeechSynthesisUtterance(fullText);
-        utter.lang = 'zh-CN';
-        utter.rate = 1.0;
-        utter.pitch = 1.0;
-
-        utter.onend = () => {
+        speakText(fullText, () => {
             setAvatarTalking(false);
             if (imageUrl) {
                 updateMessage(msgId, { imageUrl, isTyping: false }); // Fallback assure
             }
-        };
-
-        const trySpeak = () => {
-            const vList = window.speechSynthesis.getVoices();
-            const v = vList.find(v => v.lang === 'zh-CN' && (v.name.includes('Xiaoxiao') || v.name.includes('Tingting') || v.name.includes('Lili'))) || vList.find(v => v.lang.includes('zh'));
-            if (v) utter.voice = v;
-            window.speechSynthesis.speak(utter);
-        };
-
-        if (window.speechSynthesis.getVoices().length > 0) {
-            trySpeak();
-        } else {
-            window.speechSynthesis.onvoiceschanged = () => {
-                trySpeak();
-                window.speechSynthesis.onvoiceschanged = null;
-            };
-        }
+        });
     };
 
     const llmBotReply = async (userText: string) => {
+        abortCurrentReply();
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         const id = `bot-reply-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         addMessage({ id, sender: 'bot', text: '', isTyping: true });
         setAvatarTalking(true);
@@ -139,9 +198,8 @@ export default function ChatBox() {
                     updateMessage(id, { isTyping: false });
                     setIsTypingObj(null);
                     isTypingObjRef.current = null;
-                    setAvatarTalking(false);
-                    // 结束后播放合成语音 (如果需要，可开启)
-                    // window.speechSynthesis.speak(new SpeechSynthesisUtterance(accumulated));
+                    // 结束后播放合成语音并控制动画
+                    speakText(accumulated, () => setAvatarTalking(false));
                 }
             },
             (err: any) => {
@@ -150,12 +208,15 @@ export default function ChatBox() {
                 setIsTypingObj(null);
                 isTypingObjRef.current = null;
                 setAvatarTalking(false);
-            }
+                stopSpeaking();
+            },
+            controller.signal
         );
     };
 
-    const handleSend = () => {
-        const hasText = inputText.trim().length > 0;
+    const handleSend = (overrideText?: string) => {
+        const textToUse = typeof overrideText === 'string' ? overrideText : inputText;
+        const hasText = textToUse.trim().length > 0;
         let imageToSend = pendingImage;
         const hasImage = !!pendingImage;
         
@@ -195,14 +256,13 @@ export default function ChatBox() {
         // Must have at least text or image to send
         if (!hasText && !imageToSend) return;
 
-        const txt = hasText ? inputText.trim() : '帮我看看这张照片';
+        const txt = hasText ? textToUse.trim() : '帮我看看这张照片';
         // Only send image if user has explicitly attached one (pendingImage) OR auto-captured AND typed no text,
         // OR if they typed text AND have a pending/auto image — both cases use vision reply
         
         addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt, imageUrl: imageToSend || undefined });
         setInputText('');
         setPendingImage(null);
-        if (cameraActive) setCameraActive(false);
 
         if (imageToSend) {
             // Image attached: use vision model
@@ -214,6 +274,11 @@ export default function ChatBox() {
     };
 
     const visionBotReply = async (userText: string, base64Img: string) => {
+        abortCurrentReply();
+
+        const controller = new AbortController();
+        abortControllerRef.current = controller;
+
         const botMsgId = `bot-vision-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
         addMessage({ id: botMsgId, sender: 'bot', text: '让我看看...', isTyping: true });
         setAvatarTalking(true);
@@ -222,10 +287,12 @@ export default function ChatBox() {
             const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
             const prompt = `${systemPrompt}\n游客拍了一张照片并说：「${userText}」。请根据照片内容和用户的文字来回答。如果用户只是说"帮我看看"，就识别照片里的物体或风景并介绍。评价简短精要。`;
             addDebugLog('vision', `发起图片识别，base64长度=${base64Img.length}`);
-            const reply = await analyzeImage(base64Img, prompt);
+            const reply = await analyzeImage(base64Img, prompt, controller.signal);
             addDebugLog('vision', `识别成功: ${reply.substring(0, 80)}`);
             updateMessage(botMsgId, { text: reply, isTyping: false });
+            speakText(reply, () => setAvatarTalking(false));
         } catch (e: any) {
+            if (e.name === 'AbortError') return;
             const errMsg = e?.message || String(e);
             console.error('Vision Error:', e);
             addDebugLog('vision-error', `识别失败: ${errMsg}`);
@@ -233,9 +300,8 @@ export default function ChatBox() {
             const fallbackMsg = `抱歉，图片识别暂时不可用（${errMsg}）`;
             updateMessage(botMsgId, { text: fallbackMsg, isTyping: false });
             // Trigger LLM as fallback
-            llmBotReply(userText);
-        } finally {
             setAvatarTalking(false);
+            llmBotReply(userText);
         }
     };
 
@@ -245,8 +311,12 @@ export default function ChatBox() {
         };
         const txt = txtMap[key];
         const scenicName = currentLoc?.scenicArea?.name || '景区';
-        addMessage({ id: `user-quick-${Date.now()}`, sender: 'user', text: `请给我一些关于【${scenicName}】的${txt}。` });
-        llmBotReply(`请给我一些关于【${scenicName}】的${txt}。`);
+        const fullPrompt = `请给我一些关于【${scenicName}】的${txt}。`;
+        
+        // Add user msg
+        addMessage({ id: `user-quick-${Date.now()}`, sender: 'user', text: fullPrompt });
+        // Trigger the standard text response which naturally includes TTS via `onFinish`
+        llmBotReply(fullPrompt);
     };
 
     return (
@@ -371,30 +441,83 @@ export default function ChatBox() {
                     </div>
                 )}
 
-                <div className="px-4 pb-4 flex items-center space-x-2 w-full">
-                    {/* Voice Button */}
-                    <button type="button" className="w-10 h-10 flex items-center justify-center shrink-0 bg-gray-100 text-gray-700 rounded-full active:bg-gray-200 transition-colors">
-                        <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5">
-                            <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
-                        </svg>
-                    </button>
+                <div className="px-4 pb-3 flex items-center space-x-3 w-full">
+                    {/* Voice / Stop Button Toggle */}
+                    {(isTypingObj || avatarTalking) ? (
+                        <button 
+                            type="button"
+                            onClick={abortCurrentReply}
+                            className="w-10 h-10 flex items-center justify-center shrink-0 bg-red-50 text-red-500 rounded-full hover:bg-red-100 transition-colors shadow-sm"
+                            title="中断当前回复"
+                        >
+                            <svg xmlns="http://www.w3.org/2000/svg" className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                                <rect width="10" height="10" x="7" y="7" rx="1.5"/>
+                            </svg>
+                        </button>
+                    ) : (
+                        <button
+                            type="button"
+                            onClick={() => setInputMode(m => m === 'voice' ? 'text' : 'voice')}
+                            title={inputMode === 'voice' ? "切换到键盘输入" : "切换到语音输入"}
+                            className="w-10 h-10 flex items-center justify-center shrink-0 bg-transparent text-gray-500 rounded-full hover:bg-gray-100 hover:text-gray-700 active:bg-gray-200 transition-colors"
+                        >
+                            {inputMode === 'voice' ? (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 0 1 6 3.75h12A2.25 2.25 0 0 1 20.25 6v12a2.25 2.25 0 0 1-2.25 2.25H6A2.25 2.25 0 0 1 3.75 18V6ZM5.25 9h.008v.008H5.25V9Zm0 3h.008v.008H5.25V12Zm0 3h.008v.008H5.25V15ZM9 9h.008v.008H9V9Zm0 3h.008v.008H9V12Zm0 3h.008v.008H9V15Zm3-6h.008v.008H12V9Zm0 3h.008v.008H12V12Zm0 3h.008v.008H12V15Zm3-6h.008v.008H15V9Zm0 3h.008v.008H15V12Zm0 3h.008v.008H15V15Z" />
+                                </svg>
+                            ) : (
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-6 h-6">
+                                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 18.75a6 6 0 0 0 6-6v-1.5m-6 7.5a6 6 0 0 1-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 0 1-3-3V4.5a3 3 0 1 1 6 0v8.25a3 3 0 0 1-3 3Z" />
+                                </svg>
+                            )}
+                        </button>
+                    )}
 
                     <div className="flex-1">
-                        <input
-                            type="text"
-                            placeholder={pendingImage ? "输入你的问题，一起发送..." : "问我关于这里的一切..."}
-                            value={inputText}
-                            onChange={(e) => setInputText(e.target.value)}
-                            onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                            className="w-full bg-gray-100 border-none rounded-full px-4 py-2.5 text-[14px] text-gray-800 placeholder-gray-400 focus:outline-none focus:ring-2 focus:ring-blue-300 disabled:opacity-60 disabled:bg-gray-50 transition-all"
-                        />
+                        {inputMode === 'voice' ? (
+                            <button
+                                type="button"
+                                onMouseDown={startRecording}
+                                onMouseUp={stopRecording}
+                                onMouseLeave={stopRecording}
+                                onTouchStart={startRecording}
+                                onTouchEnd={stopRecording}
+                                className={`w-full py-3 text-[15px] font-medium rounded-full transition-all select-none flex items-center justify-center space-x-2 ${
+                                    isRecording 
+                                        ? 'bg-blue-100 text-blue-700 border-transparent shadow-[inset_0_2px_6px_rgba(0,0,0,0.1)]' 
+                                        : 'bg-white border border-[#e5e5e5] text-[#333] shadow-sm active:bg-gray-50'
+                                }`}
+                                style={isRecording ? { transform: 'scale(0.98)' } : {}}
+                            >
+                                {isRecording ? (
+                                    <>
+                                        <span className="relative flex h-3 w-3 mr-1">
+                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+                                            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
+                                        </span>
+                                        <span>松开发送...</span>
+                                    </>
+                                ) : (
+                                    <span>按住说话</span>
+                                )}
+                            </button>
+                        ) : (
+                            <input
+                                type="text"
+                                placeholder={pendingImage ? "添加文字描述..." : "输入问题..."}
+                                value={inputText}
+                                onChange={(e) => setInputText(e.target.value)}
+                                onKeyDown={(e) => e.key === 'Enter' && handleSend()}
+                                className="w-full bg-white border border-[#e5e5e5] rounded-full px-4 py-3 text-[15px] text-[#333] placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 shadow-sm transition-all"
+                            />
+                        )}
                     </div>
 
                     {/* Camera Button / Send Button Cross-fade */}
-                    {(inputText || pendingImage) ? (
+                    {((inputMode === 'text' && inputText) || pendingImage) ? (
                         <button
                             type="button"
-                            onClick={handleSend}
+                            onClick={() => handleSend()}
                             className="w-10 h-10 flex items-center justify-center rounded-full shrink-0 bg-blue-600 text-white shadow-sm active:scale-95 transition-all"
                         >
                             <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={1.5} stroke="currentColor" className="w-5 h-5 -ml-0.5">
@@ -414,6 +537,10 @@ export default function ChatBox() {
                             </svg>
                         </button>
                     )}
+                </div>
+
+                <div className="w-full h-[15px] flex items-center justify-center mb-2 text-[10px] text-gray-400 opacity-60 pointer-events-none select-none">
+                    —— AI伴游 提供智能服务 ——
                 </div>
             </div>
 

@@ -15,7 +15,8 @@ export async function streamChat(
     messages: ChatMessage[],
     onChunk: (text: string) => void,
     onFinish: () => void,
-    onError: (err: any) => void
+    onError: (err: any) => void,
+    signal?: AbortSignal
 ) {
     if (!API_KEY) {
         onError(new Error('未配置大模型 API Key'));
@@ -34,7 +35,8 @@ export async function streamChat(
                 messages: messages,
                 stream: true,
                 temperature: 0.7,
-            })
+            }),
+            signal
         });
 
         if (!response.ok) {
@@ -83,7 +85,11 @@ export async function streamChat(
 
         onFinish();
 
-    } catch (error) {
+    } catch (error: any) {
+        if (error.name === 'AbortError') {
+            console.log('StreamChat aborted');
+            return;
+        }
         console.error('LLM Chat Error:', error);
         onError(error);
     }
@@ -93,7 +99,7 @@ export async function streamChat(
  * 发起视觉模型分析请求 (非流式，一次性返回结果)
  * 采用原生 DashScope Multimodal 接口以完美支持 Base64
  */
-export async function analyzeImage(base64Image: string, prompt: string): Promise<string> {
+export async function analyzeImage(base64Image: string, prompt: string, signal?: AbortSignal): Promise<string> {
     if (!API_KEY) {
         throw new Error('未配置大模型 API Key');
     }
@@ -121,7 +127,8 @@ export async function analyzeImage(base64Image: string, prompt: string): Promise
                 }
             ],
             stream: false,
-        })
+        }),
+        signal
     });
 
     if (!response.ok) {

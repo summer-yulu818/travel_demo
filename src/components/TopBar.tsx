@@ -9,7 +9,8 @@ export default function TopBar() {
         enablePosSimulation, setEnablePosSimulation,
         enableCloudVision, setEnableCloudVision,
         useAMap, setUseAMap,
-        mapZoom, setMapZoom
+        mapZoom, setMapZoom,
+        showDebugPanel, setShowDebugPanel
     } = useTourStore();
 
     const [timeStr, setTimeStr] = useState('');
@@ -81,7 +82,7 @@ export default function TopBar() {
 
                     {/* Settings Dropdown */}
                     {showSettings && (
-                        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex flex-col gap-3 font-normal text-gray-700 z-50">
+                        <div className="absolute right-0 top-full mt-2 w-48 bg-white rounded-xl shadow-lg border border-gray-100 p-3 flex flex-col gap-3 font-normal text-gray-700 z-[9999]">
                             <label className="flex items-center justify-between cursor-pointer">
                                 <span>使用高德地图</span>
                                 <div className="relative inline-block w-8 h-4">
@@ -114,6 +115,18 @@ export default function TopBar() {
                                         className="peer sr-only"
                                         checked={enableCloudVision}
                                         onChange={() => setEnableCloudVision(!enableCloudVision)}
+                                    />
+                                    <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
+                                </div>
+                            </label>
+                            <label className="flex items-center justify-between cursor-pointer">
+                                <span>显示Debug视窗</span>
+                                <div className="relative inline-block w-8 h-4">
+                                    <input
+                                        type="checkbox"
+                                        className="peer sr-only"
+                                        checked={showDebugPanel}
+                                        onChange={() => setShowDebugPanel(!showDebugPanel)}
                                     />
                                     <div className="w-8 h-4 bg-gray-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-3 after:w-3 after:transition-all peer-checked:bg-blue-500"></div>
                                 </div>
