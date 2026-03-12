@@ -45,8 +45,10 @@ export const speakText = (text: string, onEnd?: () => void) => {
     // 停止之前的朗读
     stopSpeaking();
 
-    // 过滤掉不可读的标点或格式字符（根据需要可进一步完善）
-    const cleanText = text.replace(/[\*\_\[\]]/g, '');
+    // 过滤掉不可读的标点、格式字符以及表情符号（Emoji）
+    const cleanText = text
+        .replace(/[\*\_\[\]]/g, '')
+        .replace(/[\p{Extended_Pictographic}\p{Emoji_Presentation}]/gu, '');
     
     if (!cleanText.trim()) {
         if (onEnd) onEnd();

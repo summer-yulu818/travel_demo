@@ -460,7 +460,7 @@ export default function ChatBox() {
                                             <div className="grid grid-cols-3 gap-2">
                                                 {m.images.map((img, idx) => (
                                                     <div key={idx} className="aspect-[4/3] rounded-lg overflow-hidden border border-[#f0f0f0] bg-gray-50 relative group/img">
-                                                        <img src={img} alt={`img-${idx}`} className="w-full h-full object-cover" />
+                                                        <img src={img} alt={`img-${idx}`} referrerPolicy="no-referrer" className="w-full h-full object-cover" />
                                                     </div>
                                                 ))}
                                             </div>
@@ -470,7 +470,7 @@ export default function ChatBox() {
                                     {/* Single Image fallback */}
                                     {m.imageUrl && !m.images && (
                                         <div className="mt-4 rounded-xl overflow-hidden border border-[#f0f0f0]">
-                                            <img src={m.imageUrl} alt="attachment" className="w-full h-auto object-cover max-h-64" />
+                                            <img src={m.imageUrl} alt="attachment" referrerPolicy="no-referrer" className="w-full h-auto object-cover max-h-64" />
                                         </div>
                                     )}
                                 </div>
