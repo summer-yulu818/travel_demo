@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { useTourStore, Message } from '../store/useTourStore';
 import { streamChat, analyzeImage, ChatMessage } from '../services/llm';
-import { speakText, stopSpeaking } from '../services/tts';
+import { speakText, stopSpeaking, unlockAudio } from '../services/tts';
 
 export default function ChatBox() {
     const { currentLocId, currentLoc, messages, debugLogs, isVisionActive, showDebugPanel, setShowDebugPanel, addMessage, updateMessage, addDebugLog, avatarPaused, cameraActive, setCameraActive, currentTTS, clearTTS, avatarTalking, setAvatarTalking, pendingImage, setPendingImage } = useTourStore();
@@ -12,6 +12,8 @@ export default function ChatBox() {
     const isTypingObjRef = useRef<string | null>(null);
     const abortControllerRef = useRef<AbortController | null>(null);
     const recognitionRef = useRef<any>(null);
+    const transcriptRef = useRef<string>('');
+    const asrHandledRef = useRef<boolean>(false);
     const [inputMode, setInputMode] = useState<'voice' | 'text'>('voice');
     const [isRecording, setIsRecording] = useState(false);
 
@@ -65,58 +67,110 @@ export default function ChatBox() {
         }
     }, [currentTTS]);
 
-    // Initialize Speech Recognition
-    useEffect(() => {
-        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-        if (SpeechRecognition) {
-            const recognition = new SpeechRecognition();
-            recognition.lang = 'zh-CN';
-            recognition.interimResults = false;
-            recognition.maxAlternatives = 1;
-
-            recognition.onresult = (event: any) => {
-                const transcript = event.results[0][0].transcript;
-                if (transcript) {
-                    setInputText(transcript);
-                    // Pass it manually into handleSend because state update is async
-                    handleSend(transcript);
-                }
-            };
-
-            recognition.onerror = (event: any) => {
-                console.error('Speech recognition error', event.error);
-                setIsRecording(false);
-            };
-
-            recognition.onend = () => {
-                setIsRecording(false);
-            };
-
-            recognitionRef.current = recognition;
-        }
-    }, [pendingImage, cameraActive]); // Re-bind if dependencies that handleSend uses change (though we pass text directly now)
-
     const startRecording = (e: React.SyntheticEvent) => {
         e.preventDefault();
         abortCurrentReply();
-        if (recognitionRef.current) {
-            try {
-                recognitionRef.current.start();
-                setIsRecording(true);
-            } catch (err) {
-                console.error('ASR start error:', err);
-            }
-        } else {
+        unlockAudio(); // 每次交互时尝试解锁 iOS 语音播报池
+
+        if (isRecording) return; // Prevent double-trigger from touch+mouse event bleeding
+
+        const SpeechRecognition = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+        if (!SpeechRecognition) {
             console.warn('当前浏览器不支持语音识别API');
-            addDebugLog('vision-error', '当前浏览器不支持语音识别API');
+            addDebugLog('asr', '当前环境(手机/模拟器)不支持原生语音识别');
+            return;
+        }
+
+        let recognition = recognitionRef.current;
+        if (!recognition) {
+            recognition = new SpeechRecognition();
+            recognition.lang = 'zh-CN';
+            recognitionRef.current = recognition;
+        }
+
+        // 核心修复1：每次启动时重新绑定所有回调，防止陈旧闭包陷阱（Stale Closure）使用了老的 handleSend 与 pendingImage 和 messages
+        // 核心修复2：开启 interimResults = true 持续拿结果，防止在 iOS Safari 上由于显式调用 stop() 导致识别抛弃结果而什么都不抛出
+        recognition.interimResults = true;
+        recognition.maxAlternatives = 1;
+
+        transcriptRef.current = '';
+        asrHandledRef.current = false;
+
+        recognition.onresult = (event: any) => {
+            const transcript = event.results[0][0].transcript;
+            const isFinal = event.results[0].isFinal;
+            
+            transcriptRef.current = transcript;
+
+            if (isFinal) {
+                addDebugLog('asr', `最终识别结案: ${transcript}`);
+                if (!asrHandledRef.current && transcript) {
+                    asrHandledRef.current = true;
+                    setInputText(transcript); // 可选：上屏显示一下
+                    handleSend(transcript);
+                }
+            }
+        };
+
+        recognition.onerror = (event: any) => {
+            console.error('Speech recognition error', event.error);
+            addDebugLog('asr', `中断/错误: ${event.error}`);
+            setIsRecording(false);
+        };
+
+        recognition.onend = () => {
+            addDebugLog('asr', '会话关闭');
+            // 如果会话被系统或静音自动关闭了，但是我们有一段临时文字没发出去，在此处补偿发送
+            if (!asrHandledRef.current && transcriptRef.current) {
+                asrHandledRef.current = true;
+                addDebugLog('asr', `补偿发送: ${transcriptRef.current}`);
+                setInputText(transcriptRef.current);
+                handleSend(transcriptRef.current);
+            }
+            setIsRecording(false);
+        };
+
+        try {
+            recognition.start();
+            setIsRecording(true);
+            addDebugLog('asr', '开始录音监听...');
+        } catch (err: any) {
+            console.error('ASR start error:', err);
+            addDebugLog('asr', `启动异常: ${err.message || String(err)}`);
+            if (err.name === 'InvalidStateError') {
+                 setIsRecording(true); // Recovery if it fired twice simultaneously
+            }
         }
     };
 
     const stopRecording = (e: React.SyntheticEvent) => {
         e.preventDefault();
         if (recognitionRef.current && isRecording) {
-            recognitionRef.current.stop();
+            try {
+                recognitionRef.current.stop();
+                addDebugLog('asr', '停止录音(用户主动停止)');
+            } catch (err) {}
+            
+            // 兜底逻辑：如果用户主动打断录音导致识别未进入 final，我们依然把之前捕获到的临时中间文字抛出发送！
+            if (!asrHandledRef.current && transcriptRef.current) {
+                asrHandledRef.current = true;
+                const txt = transcriptRef.current;
+                addDebugLog('asr', `打断补偿发送: ${txt}`);
+                setInputText(txt);
+                handleSend(txt);
+            }
+
+            // optimistically update UI
             setIsRecording(false);
+        }
+    };
+
+    const toggleRecording = (e: React.SyntheticEvent) => {
+        e.preventDefault();
+        if (isRecording) {
+            stopRecording(e);
+        } else {
+            startRecording(e);
         }
     };
 
@@ -215,13 +269,16 @@ export default function ChatBox() {
     };
 
     const handleSend = (overrideText?: string) => {
+        unlockAudio(); // 发送消息时尝试静音唤醒语音系统
         const textToUse = typeof overrideText === 'string' ? overrideText : inputText;
         const hasText = textToUse.trim().length > 0;
         let imageToSend = pendingImage;
         const hasImage = !!pendingImage;
+        let isAutoCaptured = false;
         
         // If camera is active and user didn't manually snap a photo, auto-capture one
         if (cameraActive && !hasImage) {
+            isAutoCaptured = true;
             const videoEl = document.getElementById('tour-camera-video') as HTMLVideoElement;
             if (videoEl && videoEl.videoWidth > 0 && videoEl.videoHeight > 0) {
                 const canvas = document.createElement('canvas');
@@ -260,20 +317,21 @@ export default function ChatBox() {
         // Only send image if user has explicitly attached one (pendingImage) OR auto-captured AND typed no text,
         // OR if they typed text AND have a pending/auto image — both cases use vision reply
         
-        addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt, imageUrl: imageToSend || undefined });
+        // Only show the image in the user's bubble if they explicitly attached it
+        addMessage({ id: `user-msg-${Date.now()}`, sender: 'user', text: txt, imageUrl: isAutoCaptured ? undefined : (imageToSend || undefined) });
         setInputText('');
         setPendingImage(null);
 
         if (imageToSend) {
             // Image attached: use vision model
-            visionBotReply(txt, imageToSend);
+            visionBotReply(txt, imageToSend, isAutoCaptured);
         } else {
             // Text only: use regular LLM
             llmBotReply(txt);
         }
     };
 
-    const visionBotReply = async (userText: string, base64Img: string) => {
+    const visionBotReply = async (userText: string, base64Img: string, isAutoCaptured: boolean = false) => {
         abortCurrentReply();
 
         const controller = new AbortController();
@@ -285,11 +343,36 @@ export default function ChatBox() {
 
         try {
             const systemPrompt = `你是一个智能伴游助理。当前游客位于【${currentLoc.scenicArea.name}】(${currentLocId})。你的名字叫小溪（如果是故宫叫小故，蚂蚁空间叫小游）。请用自然亲和、导游的口吻回答问题，保持人文风格，适当使用颜文字，回答尽量简短精要。`;
-            const prompt = `${systemPrompt}\n游客拍了一张照片并说：「${userText}」。请根据照片内容和用户的文字来回答。如果用户只是说"帮我看看"，就识别照片里的物体或风景并介绍。评价简短精要。`;
-            addDebugLog('vision', `发起图片识别，base64长度=${base64Img.length}`);
-            const reply = await analyzeImage(base64Img, prompt, controller.signal);
+            
+            let prompt = '';
+            if (isAutoCaptured) {
+                prompt = `${systemPrompt}\n用户当前由于打开了摄像头功能，系统自动附带了当前取景画面的截图，并问了这个问题：「${userText}」。\n请你判断：这是一个有关景区、风景实物以及要求你看图的问题吗？\n如果用户的提问【明显且必须】要结合这张图片来回答（比如问“这是哪座山”、“我面前的塔叫什么”等指示代词），请在你的回答**最开头**加上精确的这五个字符 \`[图片相关]\` 并结合图片回答；\n如果用户的提问是纯粹的知识、闲聊或者常识问答（比如问“1+1等于几”、“你能讲个故事吗”、“你在干什么”），即**完全不需要参考这张附带图片即可回答**，请**彻头彻尾地忽略这张图片**，像纯文字对话一样回答他，并且**开头千万不要加任何标记**。`;
+            } else {
+                prompt = `${systemPrompt}\n游客主动拍了一张照片并说：「${userText}」。请根据照片内容和用户的文字来回答。如果用户只是说"帮我看看"，就识别照片里的物体或风景并介绍。评价简短精要。`;
+            }
+
+            addDebugLog('vision', `发起图片识别，base64长度=${base64Img.length}，isAuto=${isAutoCaptured}`);
+            let reply = await analyzeImage(base64Img, prompt, controller.signal);
+            
+            let isRelevant = false;
+            // 判断是否命中相关性标记
+            if (isAutoCaptured && reply.trim().startsWith('[图片相关]')) {
+                isRelevant = true;
+                reply = reply.replace('[图片相关]', '').trim();
+                addDebugLog('vision', `大模型判断: 问题与自动截图【相关】`);
+            } else if (isAutoCaptured) {
+                addDebugLog('vision', `大模型判断: 问题与截图【无关】，忽略图片`);
+            }
+
             addDebugLog('vision', `识别成功: ${reply.substring(0, 80)}`);
-            updateMessage(botMsgId, { text: reply, isTyping: false });
+            
+            // 如果是用户主动拍照，或者是自动截图且模型判定强相关的，把这帧图片放进回复气泡的附件里，让用户知道“我是看了这幅画面回答的”
+            const replyMsgUpdate: Partial<Message> = { text: reply, isTyping: false };
+            if (!isAutoCaptured || isRelevant) {
+                replyMsgUpdate.imageUrl = base64Img;
+            }
+
+            updateMessage(botMsgId, replyMsgUpdate);
             speakText(reply, () => setAvatarTalking(false));
         } catch (e: any) {
             if (e.name === 'AbortError') return;
@@ -306,6 +389,7 @@ export default function ChatBox() {
     };
 
     const triggerQuickWord = (key: 'route' | 'history' | 'food' | 'photo') => {
+        unlockAudio(); // 使用快捷推荐词时解锁语音
         const txtMap = {
             route: '推荐路线', history: '历史故事', food: '美食推荐', photo: '拍照攻略'
         };
@@ -477,28 +561,27 @@ export default function ChatBox() {
                         {inputMode === 'voice' ? (
                             <button
                                 type="button"
-                                onMouseDown={startRecording}
-                                onMouseUp={stopRecording}
-                                onMouseLeave={stopRecording}
-                                onTouchStart={startRecording}
-                                onTouchEnd={stopRecording}
-                                className={`w-full py-3 text-[15px] font-medium rounded-full transition-all select-none flex items-center justify-center space-x-2 ${
+                                onClick={toggleRecording}
+                                className={`w-full h-[40px] text-[15px] font-medium rounded-full transition-all select-none flex items-center justify-center space-x-2 ${
                                     isRecording 
-                                        ? 'bg-blue-100 text-blue-700 border-transparent shadow-[inset_0_2px_6px_rgba(0,0,0,0.1)]' 
+                                        ? 'bg-blue-600 text-white shadow-[0_0_15px_rgba(37,99,235,0.4)] border-transparent animate-pulse-slow' 
                                         : 'bg-white border border-[#e5e5e5] text-[#333] shadow-sm active:bg-gray-50'
                                 }`}
                                 style={isRecording ? { transform: 'scale(0.98)' } : {}}
                             >
                                 {isRecording ? (
                                     <>
-                                        <span className="relative flex h-3 w-3 mr-1">
-                                            <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
-                                            <span className="relative inline-flex rounded-full h-3 w-3 bg-blue-500"></span>
-                                        </span>
-                                        <span>松开发送...</span>
+                                        <div className="flex items-center space-x-[3px] mr-1">
+                                            <div className="wave-line" style={{ animationDelay: '0s' }}></div>
+                                            <div className="wave-line" style={{ animationDelay: '0.2s', height: '20px' }}></div>
+                                            <div className="wave-line" style={{ animationDelay: '0.4s' }}></div>
+                                            <div className="wave-line" style={{ animationDelay: '0.1s', height: '18px' }}></div>
+                                            <div className="wave-line" style={{ animationDelay: '0.3s' }}></div>
+                                        </div>
+                                        <span className="tracking-wide text-[14px]">正在聆听，点击发送</span>
                                     </>
                                 ) : (
-                                    <span>按住说话</span>
+                                    <span>点击说话</span>
                                 )}
                             </button>
                         ) : (
@@ -508,7 +591,7 @@ export default function ChatBox() {
                                 value={inputText}
                                 onChange={(e) => setInputText(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleSend()}
-                                className="w-full bg-white border border-[#e5e5e5] rounded-full px-4 py-3 text-[15px] text-[#333] placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 shadow-sm transition-all"
+                                className="w-full h-[40px] bg-white border border-[#e5e5e5] rounded-full px-5 text-[15px] text-[#333] placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 shadow-sm transition-all"
                             />
                         )}
                     </div>
@@ -556,16 +639,31 @@ export default function ChatBox() {
                                 <div className="w-1.5 h-1.5 rounded-full bg-green-500/80"></div>
                             </div>
                         </div>
-                        <button
-                            onClick={() => setShowDebugPanel(false)}
-                            className="text-gray-500 hover:text-white transition-colors p-0.5"
-                        >
-                            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
-                                <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
-                            </svg>
-                        </button>
+                        <div className="flex space-x-2 items-center">
+                            <button
+                                onClick={() => {
+                                    const text = debugLogs.map(l => `[${l.ts}] [${l.type}] ${l.detail}`).join('\n');
+                                    navigator.clipboard.writeText(text).then(() => addDebugLog('system', '日志已复制'));
+                                }}
+                                className="text-gray-500 hover:text-white transition-colors p-0.5"
+                                title="复制所有日志"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" className="w-3.5 h-3.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M15.75 17.25v3.375c0 .621-.504 1.125-1.125 1.125h-9.75a1.125 1.125 0 0 1-1.125-1.125V7.875c0-.621.504-1.125 1.125-1.125H6.75a9.06 9.06 0 0 1 1.5.124m7.5 10.376h3.375c.621 0 1.125-.504 1.125-1.125V11.25c0-4.46-3.243-8.161-7.5-8.876a9.06 9.06 0 0 0-1.5-.124H9.375c-.621 0-1.125.504-1.125 1.125v3.5m7.5 10.375H9.375a1.125 1.125 0 0 1-1.125-1.125v-9.25m12 6.625v-1.875a3.375 3.375 0 0 0-3.375-3.375h-1.5a1.125 1.125 0 0 1-1.125-1.125v-1.5a3.375 3.375 0 0 0-3.375-3.375H9.75" />
+                                </svg>
+                            </button>
+                            <button
+                                onClick={() => setShowDebugPanel(false)}
+                                className="text-gray-500 hover:text-white transition-colors p-0.5"
+                                title="关闭视窗"
+                            >
+                                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2.5} stroke="currentColor" className="w-3.5 h-3.5">
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M6 18 18 6M6 6l12 12" />
+                                </svg>
+                            </button>
+                        </div>
                     </div>
-                    <div ref={debugMsgsRef} className="h-24 overflow-y-auto w-full no-scrollbar space-y-1 py-1 scroll-smooth">
+                    <div ref={debugMsgsRef} className="h-40 overflow-y-auto w-full no-scrollbar space-y-1 py-1 scroll-smooth">
                         {debugLogs.length === 0 ? (
                             <div className="text-center py-4">
                                 <span className="text-[10px] font-mono text-slate-400/60 italic">[ 等待视觉检测日志... ]</span>

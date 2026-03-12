@@ -1580,6 +1580,20 @@ body {
     margin-top: 20px;
     height: calc(100vh - 40px);
     box-shadow: 0 0 60px rgba(59, 130, 246, 0.08), 0 0 120px rgba(30, 58, 95, 0.1),
-      inset 0 0 0 1px rgba(255, 255, 255, 0.3)
+      inset 0 0 0 1px rgba(255, 255, 255, 0.3);
   }
+}
+
+/* ===== 科技感语音波纹动画 ===== */
+@keyframes sound-wave {
+  0%, 100% { transform: scaleY(0.4); opacity: 0.6; }
+  50% { transform: scaleY(1); opacity: 1; }
+}
+.wave-line {
+  width: 3px;
+  height: 16px;
+  background-color: currentColor;
+  border-radius: 2px;
+  animation: sound-wave 1s ease-in-out infinite;
+  transform-origin: center;
 }
